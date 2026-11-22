@@ -22,7 +22,8 @@
       (function () {
         var root = document.documentElement
         function detect() {
-          var touch = navigator.maxTouchPoints > 0 || 'ontouchstart' in window
+          var pointerCoarse = window.matchMedia && (matchMedia('(any-pointer: coarse)').matches || matchMedia('(pointer: coarse)').matches)
+          var touch = navigator.maxTouchPoints > 0 || 'ontouchstart' in window || pointerCoarse
           var layoutW = window.innerWidth
           if (touch && layoutW > 720) {
             root.dataset.desktopSite = 'true'

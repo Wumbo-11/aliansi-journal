@@ -304,6 +304,21 @@ textarea:focus-visible {
   line-height: 1.15;
 }
 
+.rotating-heading-text {
+  display: inline-block;
+  min-height: 1.2em;
+}
+
+.heading-caret {
+  display: inline-block;
+  width: 2px;
+  height: 0.86em;
+  margin-left: 0.08em;
+  background: var(--accent);
+  vertical-align: -0.08em;
+  animation: blink 1.1s steps(1, end) infinite;
+}
+
 .section-note {
   max-width: 230px;
   margin: 0;

@@ -94,6 +94,7 @@ const check = (name, ok, detail = '') => {
 }
 
 import { createRequire } from 'node:module'
+import { readFileSync } from 'node:fs'
 const require = createRequire(import.meta.url)
 const { mountDotField, mountApp } = require('./build/test/entry.js')
 
@@ -183,6 +184,19 @@ window.devicePixelRatio = 1
 const appRoot = mountApp(document.getElementById('app'))
 await sleep(100)
 
+const heading = () => document.querySelector('.rotating-heading-text')?.textContent ?? ''
+check('heading: animasi teks di judul form', await (async () => {
+  const start = Date.now()
+  while (Date.now() - start < 4000) {
+    if (heading().startsWith('Sebuah cerita, sebuah hari.') && heading().length > 4) return true
+    await sleep(60)
+  }
+  return false
+})(), `teks="${heading()}"`)
+check('heading: placeholder input tidak beranimasi lagi',
+  document.querySelector('.input-placeholder') === null &&
+  document.querySelector('.title-input')?.getAttribute('placeholder') === 'Tulis judul di sini…')
+
 const titleText = () => document.querySelector('.title-mark-text')?.textContent ?? ''
 const waitFor = async (fn, timeout = 5000) => {
   const start = Date.now()
@@ -268,6 +282,16 @@ check('race: cerita baru tidak dihapus oleh list yang datang belakangan', titles
 const storedRace = JSON.parse(window.localStorage.getItem('aliansi-journal/v1') || '[]')
 check('race: keduanya tersimpan di lokal', storedRace.length === 2, `${storedRace.length} entri`)
 appRoot3.unmount()
+
+// ================= TES 4: DETEKSI DESKTOP-HP =================
+const cssText = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
+const htmlText = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
+const mainText = readFileSync(new URL('../src/main.tsx', import.meta.url), 'utf8')
+check('deteksi: touch + viewport lebar -> zoom aktif',
+  htmlText.includes('maxTouchPoints') && htmlText.includes('dataset.desktopSite') &&
+  cssText.includes("html[data-desktop-site='true'] .site") &&
+  cssText.includes('zoom: var(--desktop-zoom'))
+check('cache: ?fresh=1 membersihkan service worker', mainText.includes("has('fresh')") && mainText.includes('getRegistrations') && mainText.includes('caches.delete'))
 
 // ================= HASIL =================
 const failed = results.filter((r) => !r.ok)

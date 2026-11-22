@@ -393,6 +393,11 @@ check('mobile: dots jadi bagian layout (bukan floating)',
   /\.page-dots \{\s*flex: 0 0 auto/.test(cssText))
 check('mobile: footer disembunyikan di HP', /\.footer \{\s*display: none/.test(cssText))
 check('lampu: pita cahaya UFO (lamp-halo) dimatikan', /\.lamp-halo \{\s*display: none/.test(cssText))
+check('lampu tema terang: kap lampu item & mati',
+  /:root\[data-theme='light'\] \.lamp-body \{\s*fill: #1b1916;/.test(cssText) &&
+  /:root\[data-theme='light'\] \.lamp-bulb \{[\s\S]*?filter: none;/.test(cssText))
+check('lampu tema terang: teks Aliansi tanpa gradasi cahaya',
+  /:root\[data-theme='light'\] \.title-mark-text \{\s*background-image: none;/.test(cssText))
 
 // ================= TES 4: DETEKSI DESKTOP-HP =================
 const htmlText = readFileSync(new URL('../index.html', import.meta.url), 'utf8')

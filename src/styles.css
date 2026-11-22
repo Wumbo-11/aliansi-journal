@@ -258,6 +258,35 @@ textarea:focus-visible {
   filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.85)) drop-shadow(0 2px 3px rgba(255, 255, 255, 0.5));
 }
 
+/* ── Tema terang: lampu item & mati (tidak ada cahaya) ──────────
+   Biar warna lampu tidak bertabrakan dengan latar krem. */
+:root[data-theme='light'] .lamp-cord {
+  background: linear-gradient(to bottom, transparent, #2a2722 70%, #1b1916);
+  opacity: 0.85;
+}
+
+:root[data-theme='light'] .lamp-shade {
+  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.12));
+}
+
+:root[data-theme='light'] .lamp-wire {
+  stroke: #1b1916;
+}
+
+:root[data-theme='light'] .lamp-body {
+  fill: #1b1916;
+  stroke: #1b1916;
+}
+
+:root[data-theme='light'] .lamp-rim {
+  stroke: #1b1916;
+}
+
+:root[data-theme='light'] .lamp-bulb {
+  fill: #3a352c;
+  filter: none;
+}
+
 .eyebrow {
   display: block;
   font-size: 10px;
@@ -308,15 +337,11 @@ textarea:focus-visible {
   transition: background-image 0.08s linear;
 }
 
+/* Tema terang: lampu mati, jadi teks tidak disorot — warna solid biasa. */
 :root[data-theme='light'] .title-mark-text {
-  background-image: radial-gradient(
-    ellipse 85% 320% at var(--lamp-rel, 50%) 45%,
-    #ffffff 0%,
-    #fff9e8 18%,
-    #e6d7b4 42%,
-    #b8a279 68%,
-    #8d7b58 100%
-  );
+  background-image: none;
+  color: var(--text);
+  -webkit-text-fill-color: var(--text);
 }
 
 .title-mark:hover {

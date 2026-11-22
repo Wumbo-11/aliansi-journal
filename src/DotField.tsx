@@ -14,6 +14,15 @@ type Dot = {
  */
 export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  // Tema dibaca lewat ref: ganti tema cukup mengganti gradient, TANPA
+  // membongkar grid titik & canvas (menghindari kedip saat transisi).
+  const themeRef = useRef(theme)
+  const rethemeRef = useRef<(() => void) | null>(null)
+
+  useEffect(() => {
+    themeRef.current = theme
+    rethemeRef.current?.()
+  }, [theme])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -44,13 +53,16 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
     let idleFrames = 0
     let scrolling = false
     let scrollTimer = 0
+    let speedTimer = 0
     const pointer = { x: -9999, y: -9999, prevX: -9999, prevY: -9999, active: false }
 
-    // Gradient dibuat sekali per resize, bukan tiap frame — jauh lebih ringan.
+    const BUCKETS = 7
+
+    // Gradient dibuat sekali per resize/tema, bukan tiap frame — jauh lebih ringan.
     let gradient: CanvasGradient | null = null
     const makeGradient = () => {
       const g = ctx.createLinearGradient(0, 0, width, height)
-      if (theme === 'dark') {
+      if (themeRef.current === 'dark') {
         g.addColorStop(0, 'rgba(243,239,231,0.9)')
         g.addColorStop(1, 'rgba(201,168,106,0.55)')
       } else {
@@ -97,12 +109,21 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
       pointer.prevX = pointer.x
       pointer.prevY = pointer.y
     }
-    const speedTimer = window.setInterval(trackSpeed, 20)
+    // Timer kecepatan hanya hidup selama animasi jalan — bukan interval
+    // abadi yang membangunkan JS tiap 20ms walau halaman diam.
+    const startSpeedTimer = () => {
+      if (speedTimer) return
+      speedTimer = window.setInterval(trackSpeed, 20)
+    }
+    const stopSpeedTimer = () => {
+      if (!speedTimer) return
+      window.clearInterval(speedTimer)
+      speedTimer = 0
+    }
 
-    const BUCKETS = 7
     // Tema terang butuh kontras lebih tinggi supaya titiknya benar-benar terlihat.
-    const baseAlpha = theme === 'dark' ? 0.045 : 0.11
-    const peakAlpha = theme === 'dark' ? 0.5 : 0.46
+    let baseAlpha = themeRef.current === 'dark' ? 0.045 : 0.11
+    let peakAlpha = themeRef.current === 'dark' ? 0.5 : 0.46
 
     const draw = () => {
       ctx.clearRect(0, 0, width, height)
@@ -133,11 +154,15 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
         if (active && distanceSquared < radiusSquared) {
           const distance = Math.sqrt(distanceSquared) || 0.001
           const close = 1 - distance / cursorRadius
-          glow = close * close * intensity
-          const push = close * close * bulgeStrength * intensity
-          const angle = Math.atan2(dy, dx)
-          nextX += (dot.ax - Math.cos(angle) * push - nextX) * 0.16
-          nextY += (dot.ay - Math.sin(angle) * push - nextY) * 0.16
+          const closeSq = close * close
+          glow = closeSq * intensity
+          const push = closeSq * bulgeStrength * intensity
+          // Arah radial tanpa atan2/sin/cos: cos = dx/d, sin = dy/d.
+          const inv = push / distance
+          const targetX = dot.ax - dx * inv
+          const targetY = dot.ay - dy * inv
+          nextX += (targetX - nextX) * 0.16
+          nextY += (targetY - nextY) * 0.16
         } else {
           nextX += (dot.ax - nextX) * 0.1
           nextY += (dot.ay - nextY) * 0.1
@@ -167,6 +192,7 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
       if (reduced || running) return
       running = true
       idleFrames = 0
+      startSpeedTimer()
       raf = requestAnimationFrame(loop)
     }
 
@@ -188,6 +214,7 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
       if (idleFrames > 20) {
         running = false
         raf = 0
+        stopSpeedTimer()
         return
       }
       raf = requestAnimationFrame(loop)
@@ -221,6 +248,7 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
       if (document.hidden) {
         running = false
         cancelAnimationFrame(raf)
+        stopSpeedTimer()
       } else if (!reduced) {
         start()
       }
@@ -236,9 +264,21 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
     }
 
     build()
+    // Ganti tema: cukup ganti gradient + alpha, lalu gambar sekali.
+    // Grid titik tidak dibongkar, jadi tidak ada kedip/flash.
+    rethemeRef.current = () => {
+      baseAlpha = themeRef.current === 'dark' ? 0.045 : 0.11
+      peakAlpha = themeRef.current === 'dark' ? 0.5 : 0.46
+      makeGradient()
+      if (!running) {
+        if (reduced) draw()
+        else start()
+      }
+    }
     if (reduced) {
       draw()
     } else {
+      startSpeedTimer()
       raf = requestAnimationFrame(loop)
       window.addEventListener('mousemove', onMouseMove, { passive: true })
       window.addEventListener('touchstart', onTouch, { passive: true })
@@ -252,7 +292,8 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
     if (touch) window.addEventListener('scroll', onScroll, { passive: true })
 
     return () => {
-      window.clearInterval(speedTimer)
+      stopSpeedTimer()
+      rethemeRef.current = null
       window.clearTimeout(scrollTimer)
       cancelAnimationFrame(raf)
       window.removeEventListener('scroll', onScroll)
@@ -265,7 +306,7 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
       window.removeEventListener('touchcancel', onLeave)
       document.removeEventListener('mouseleave', onLeave)
     }
-  }, [theme])
+  }, [])
 
   return <canvas ref={canvasRef} className="dot-field" aria-hidden="true" />
 }

@@ -204,7 +204,11 @@ function RotatingHeading() {
     let current = ''
     let deleting = false
     let hold = 0
-    const timer = window.setInterval(() => {
+    let timer = 0
+    let stopped = false
+
+    const tick = () => {
+      if (stopped) return
       if (!deleting) {
         current = full.slice(0, current.length + 1)
         setShown(current)
@@ -216,12 +220,30 @@ function RotatingHeading() {
         setShown(current)
         if (!current) {
           window.clearInterval(timer)
+          timer = 0
           setIndex((value) => (value + 1) % HEADING_HINTS.length)
         }
       }
-    }, 70)
+    }
+    const run = () => {
+      if (timer) return
+      timer = window.setInterval(tick, 70)
+    }
+    const stop = () => {
+      if (!timer) return
+      window.clearInterval(timer)
+      timer = 0
+    }
+    // Tab tersembunyi: hentikan timer supaya tidak membangunkan CPU.
+    const onVisibility = () => (document.hidden ? stop() : run())
 
-    return () => window.clearInterval(timer)
+    run()
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      stopped = true
+      document.removeEventListener('visibilitychange', onVisibility)
+      stop()
+    }
   }, [index, reducedMotion])
 
   return <span className="rotating-heading-text">{shown || '\u00a0'}</span>
@@ -680,10 +702,20 @@ export default function App() {
 
   useEffect(() => {
     const queryMobile = window.matchMedia('(max-width: 720px)')
-    const onChange = () => setIsMobile(isCompactView())
+    let raf = 0
+    const sync = () => {
+      const next = isCompactView()
+      setIsMobile((current) => (current === next ? current : next))
+    }
+    // rAF-throttle: event resize bisa membanjir, cukup satu cek per frame.
+    const onChange = () => {
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(sync)
+    }
     queryMobile.addEventListener('change', onChange)
-    window.addEventListener('resize', onChange)
+    window.addEventListener('resize', onChange, { passive: true })
     return () => {
+      cancelAnimationFrame(raf)
       queryMobile.removeEventListener('change', onChange)
       window.removeEventListener('resize', onChange)
     }

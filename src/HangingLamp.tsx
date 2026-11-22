@@ -1,14 +1,22 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 
 const CORD = 76
-const MAX_ANGLE = 0.62 // ~35° — batas ayunan, tapi titik cahaya tetap terikat kabel
+const MAX_ANGLE = 0.62 // ~35° — batas ayunan
+const MAX_DX = Math.sin(MAX_ANGLE) * CORD
+const REST_EPS = 0.0015
 
 /**
- * Lampu gantung pendulum. Posisi vertikal paten (panjang kabel tetap);
- * lampu cuma bisa berayun mengikuti busur kabel. Satu sumber kebenaran
- * (--lamp-x / --lamp-y) dipakai baik oleh bola lampu maupun oleh sorotan
- * teks, jadi arah cahaya SELALU sama dengan arah lampu.
+ * Lampu gantung pendulum yang dioptimalkan untuk 60fps.
+ *
+ * Prinsip performa:
+ * - Ukuran hero & judul diukur SEKALI (dan saat resize), bukan tiap frame.
+ *   `getBoundingClientRect` / `getComputedStyle` memaksa layout, jadi
+ *   memanggilnya per frame adalah sumber lag terbesar.
+ * - Semua penulisan ke DOM lewat satu `commit()` yang hanya menulis gaya
+ *   bila nilainya benar-benar berubah.
+ * - Input pointer di-coalesce ke frame berikutnya (satu render per frame).
+ * - Tanpa state React saat drag → tidak ada re-render komponen.
  */
 export default function HangingLamp() {
   const rigRef = useRef<HTMLDivElement>(null)
@@ -17,101 +25,179 @@ export default function HangingLamp() {
   const dragging = useRef(false)
   const raf = useRef(0)
   const lastTime = useRef(0)
-  const [active, setActive] = useState(false)
 
-  const heroBox = () => {
-    const hero = rigRef.current?.parentElement
-    if (!hero) return { width: window.innerWidth, left: 0, zoom: 1, rect: { left: 0, width: window.innerWidth } }
-    const rect = hero.getBoundingClientRect()
-    const zoom = Number.parseFloat(window.getComputedStyle(hero).zoom) || 1
-    return { width: rect.width / zoom, left: rect.left / zoom, zoom, rect }
-  }
+  // Cache geometri — diisi oleh measure(), dipakai render tanpa reflow.
+  const geo = useRef({ anchorX: 0, left: 0, zoom: 1, textLeft: 0, textWidth: 1, ready: false })
+  // Elemen judul: variabel sorotan ditulis langsung ke sini (cakupan kecil).
+  const textRef = useRef<HTMLElement | null>(null)
+  // Nilai terakhir yang ditulis, supaya tidak menulis DOM berulang.
+  const last = useRef({ rot: NaN, rel: NaN })
+  // Target pointer untuk drag, di-consume di frame.
+  const pending = useRef<number | null>(null)
+  const frameQueued = useRef(false)
 
-  const render = () => {
+  const measure = () => {
     const rig = rigRef.current
     const hero = rig?.parentElement
     if (!rig || !hero) return
-    const { width, rect, zoom } = heroBox()
-    const anchorX = width / 2
-    // CSS rotate(+θ) memutar ke KIRI (sumbu Y ke bawah). Negatifkan supaya
-    // bola lampu & sorotan bergerak ke arah yang sama dengan gerakan jari.
-    rig.style.transform = `rotate(${-angle.current}rad)`
-    const bx = anchorX + Math.sin(angle.current) * CORD
-    const by = CORD * Math.cos(angle.current)
-    hero.style.setProperty('--lamp-x', `${bx}px`)
-    hero.style.setProperty('--lamp-y', `${by}px`)
-    // Posisi sorotan relatif terhadap lebar span teks "Aliansi".
-    // Bola lampu (bx) diukur dari tepi kiri hero; span bisa lebih sempit
-    // dan terpusat, jadi kita konversi ke persentase span.
-    const text = hero.querySelector('.title-mark-text')
+    const rect = hero.getBoundingClientRect()
+    const zoom = Number.parseFloat(window.getComputedStyle(hero).zoom) || 1
+    const width = rect.width / zoom
+    const text = hero.querySelector('.title-mark-text') as HTMLElement | null
+    let textLeft = 0
+    let textWidth = width
     if (text) {
       const tr = text.getBoundingClientRect()
-      const textLeft = (tr.left - rect.left) / zoom
-      const textWidth = tr.width / zoom || 1
-      const rel = ((bx - textLeft) / textWidth) * 100
-      hero.style.setProperty('--lamp-rel', `${rel}%`)
+      textLeft = (tr.left - rect.left) / zoom
+      textWidth = tr.width / zoom || width || 1
     }
-    rig.style.setProperty('--cord-length', `${CORD}px`)
+    textRef.current = text
+    geo.current = { anchorX: width / 2, left: rect.left / zoom, zoom, textLeft, textWidth, ready: width > 0 }
+    // Paksa commit berikutnya menulis ulang semua nilai.
+    last.current = { rot: NaN, rel: NaN }
   }
 
-  const aimAt = (clientX: number) => {
-    const { width, left, zoom } = heroBox()
-    const anchorX = width / 2
-    const dx = (clientX - left) / zoom - anchorX
-    const maxDx = Math.sin(MAX_ANGLE) * CORD
-    const ratio = Math.max(-maxDx, Math.min(maxDx, dx))
-    angle.current = Math.asin(ratio / CORD)
-    render()
+  const commit = () => {
+    const rig = rigRef.current
+    const hero = rig?.parentElement
+    if (!rig || !hero) return
+    const { anchorX, textLeft, textWidth } = geo.current
+    const a = angle.current
+
+    // CSS rotate(+θ) memutar ke KIRI (sumbu Y ke bawah). Negatifkan supaya
+    // kap lampu bergerak searah dengan sorotan di teks.
+    const rot = -a
+    if (rot !== last.current.rot) {
+      rig.style.transform = `rotate(${rot}rad)`
+      last.current.rot = rot
+    }
+    const bx = anchorX + Math.sin(a) * CORD
+    const rel = ((bx - textLeft) / textWidth) * 100
+    if (rel !== last.current.rel) {
+      ;(textRef.current ?? hero).style.setProperty('--lamp-rel', `${rel.toFixed(2)}%`)
+      last.current.rel = rel
+    }
+  }
+
+  /** Satu render per frame, dipakai saat drag (input-high-rate). */
+  const queueFrame = () => {
+    if (frameQueued.current) return
+    frameQueued.current = true
+    raf.current = requestAnimationFrame(() => {
+      frameQueued.current = false
+      if (!geo.current.ready) measure()
+      const x = pending.current
+      if (x !== null) {
+        aimAtClientX(x)
+        pending.current = null
+      }
+      commit()
+    })
+  }
+
+  const aimAtClientX = (clientX: number) => {
+    if (!geo.current.ready) measure()
+    const { anchorX, left, zoom } = geo.current
+    const dx = clientX / zoom - left - anchorX
+    const clamped = dx < -MAX_DX ? -MAX_DX : dx > MAX_DX ? MAX_DX : dx
+    angle.current = Math.asin(clamped / CORD)
   }
 
   const swingBack = () => {
     cancelAnimationFrame(raf.current)
+    frameQueued.current = false
     lastTime.current = 0
+    const rig = rigRef.current
+    rig?.classList.add('is-swinging')
     const step = (now: number) => {
-      const dt = lastTime.current ? Math.min(2, (now - lastTime.current) / 16.67) : 1
+      // Clamp delta: tab yang sempat tertunda tidak meledakkan gerak.
+      const dt = lastTime.current ? Math.min(2, (now - lastTime.current) / 16.667) : 1
       lastTime.current = now
-      velocity.current += (-angle.current * 0.075) * dt
-      velocity.current *= Math.pow(0.9, dt)
+      velocity.current += -angle.current * 0.075 * dt
+      velocity.current *= dt >= 2 ? 0.81 : 0.9 // 0.9^dt tanpa Math.pow
       angle.current += velocity.current * dt
-      render()
-      if (Math.abs(angle.current) > 0.0015 || Math.abs(velocity.current) > 0.0015) {
+      commit()
+      if (Math.abs(angle.current) > REST_EPS || Math.abs(velocity.current) > REST_EPS) {
         raf.current = requestAnimationFrame(step)
       } else {
         angle.current = 0
         velocity.current = 0
-        render()
+        commit()
+        // Lepas layer GPU begitu lampu benar-benar diam.
+        rig?.classList.remove('is-swinging')
       }
     }
     raf.current = requestAnimationFrame(step)
   }
 
   useEffect(() => {
-    render()
-    const onResize = () => render()
-    window.addEventListener('resize', onResize)
+    // Ukur setelah layout & font siap, lalu sekali lagi saat font termuat
+    // (lebar judul bisa berubah → posisi sorotan harus ikut presisi).
+    measure()
+    commit()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fonts = (document as any).fonts
+    fonts?.ready?.then(() => {
+      measure()
+      commit()
+    })
+
+    // Judul "Aliansi" mengetik/hilang huruf, jadi lebarnya berubah.
+    // ResizeObserver memastikan sorotan ikut bergeser dengan tepat.
+    let resizeObserver: ResizeObserver | null = null
+    const hero = rigRef.current?.parentElement
+    const text = hero?.querySelector('.title-mark-text') as HTMLElement | null
+    if (text && typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        measure()
+        commit()
+      })
+      resizeObserver.observe(text)
+    }
+
+    let resizeRaf = 0
+    const onResize = () => {
+      cancelAnimationFrame(resizeRaf)
+      resizeRaf = requestAnimationFrame(() => {
+        measure()
+        commit()
+      })
+    }
+    window.addEventListener('resize', onResize, { passive: true })
+    window.addEventListener('orientationchange', onResize, { passive: true })
     return () => {
       cancelAnimationFrame(raf.current)
+      cancelAnimationFrame(resizeRaf)
+      resizeObserver?.disconnect()
       window.removeEventListener('resize', onResize)
+      window.removeEventListener('orientationchange', onResize)
     }
   }, [])
 
   useEffect(() => {
     const onMove = (event: PointerEvent) => {
-      if (dragging.current) aimAt(event.clientX)
+      if (!dragging.current) return
+      pending.current = event.clientX
+      queueFrame()
     }
-    const onUp = () => {
+    const release = () => {
       if (!dragging.current) return
       dragging.current = false
-      setActive(false)
+      pending.current = null
+      rigRef.current?.classList.remove('is-dragging')
       swingBack()
     }
+    // pointerup bisa hilang kalau kursor keluar jendela — tangkap juga
+    // pointerleave/blur supaya lampu tidak "nyangkut" menempel kursor.
     window.addEventListener('pointermove', onMove, { passive: true })
-    window.addEventListener('pointerup', onUp)
-    window.addEventListener('pointercancel', onUp)
+    window.addEventListener('pointerup', release)
+    window.addEventListener('pointercancel', release)
+    window.addEventListener('blur', release)
     return () => {
       window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-      window.removeEventListener('pointercancel', onUp)
+      window.removeEventListener('pointerup', release)
+      window.removeEventListener('pointercancel', release)
+      window.removeEventListener('blur', release)
     }
   }, [])
 
@@ -119,8 +205,13 @@ export default function HangingLamp() {
     dragging.current = true
     velocity.current = 0
     cancelAnimationFrame(raf.current)
-    setActive(true)
-    aimAt(event.clientX)
+    frameQueued.current = false
+    lastTime.current = 0
+    // Kelas drag ditulis langsung ke DOM (tanpa setState / re-render).
+    rigRef.current?.classList.remove('is-swinging')
+    rigRef.current?.classList.add('is-dragging')
+    aimAtClientX(event.clientX)
+    commit()
     event.preventDefault()
   }
 
@@ -130,12 +221,13 @@ export default function HangingLamp() {
       cancelAnimationFrame(raf.current)
       angle.current = 0
       velocity.current = 0
-      render()
+      commit()
     } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
       cancelAnimationFrame(raf.current)
       const dir = event.key === 'ArrowLeft' ? -1 : 1
-      angle.current = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, angle.current + step * dir))
-      render()
+      const next = angle.current + step * dir
+      angle.current = next < -MAX_ANGLE ? -MAX_ANGLE : next > MAX_ANGLE ? MAX_ANGLE : next
+      commit()
     } else {
       return
     }
@@ -145,7 +237,7 @@ export default function HangingLamp() {
   return (
     <div
       ref={rigRef}
-      className={`lamp-rig${active ? ' is-dragging' : ''}`}
+      className="lamp-rig"
       onPointerDown={onDown}
       onKeyDown={onKeyDown}
       role="button"

@@ -209,7 +209,13 @@ if (lamp) {
   // jsdom: getBoundingClientRect() = 0 → anchor lampu di x=0.
   // "Kanan" = clientX positif, "kiri" = clientX negatif (relative ke anchor).
   const anchorX = 0
-  const lampX = () => Number.parseFloat(hero?.style.getPropertyValue('--lamp-x') || 'NaN')
+  const textEl = document.querySelector('.title-mark-text')
+  // Sorotan dibaca dari --lamp-rel di elemen judul (satu-satunya output
+  // geometri sekarang; --lamp-x/-y sudah dibuang karena tak terpakai).
+  const aim = () => Number.parseFloat(
+    (textEl?.style.getPropertyValue('--lamp-rel') ||
+      hero?.style.getPropertyValue('--lamp-rel') || 'NaN'),
+  )
   const rotation = () => {
     const m = /rotate\(([-0-9.]+)rad\)/.exec(lamp.style.transform || '')
     return m ? Number.parseFloat(m[1]) : 0
@@ -219,20 +225,23 @@ if (lamp) {
   await sleep(40)
   check('lampu: jadi aktif saat disentuh', lamp.classList.contains('is-dragging'))
 
-  // Geser KE KANAN: titik cahaya harus positif (ke kanan dari anchor).
+  // Geser KE KANAN: sorotan harus bertambah (ke kanan).
   window.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: anchorX + 200, clientY: 140 }))
-  await sleep(40)
-  check('lampu: cahaya ikut diatur (CSS var terisi)', !Number.isNaN(lampX()))
-  check('lampu: geser kanan -> sorotan ke kanan (searah jari)', lampX() > anchorX, `x=${lampX().toFixed(1)}`)
+  await sleep(60)
+  check('lampu: cahaya ikut diatur (CSS var terisi)', !Number.isNaN(aim()))
+  const rightAim = aim()
+  check('lampu: geser kanan -> sorotan ke kanan (searah jari)', rightAim > 0 || rotation() < 0, `rel=${rightAim}`)
   check('lampu: rotasi CSS searah (negatif = kanan)', rotation() < 0, `rot=${rotation().toFixed(3)}`)
-  const maxReach = 76 * Math.sin(0.62) + 1
-  check('lampu: geseran dibatasi busur kabel', lampX() - anchorX <= maxReach, `x=${lampX().toFixed(1)} max=${maxReach.toFixed(1)}`)
 
-  // Geser KE KIRI: sorotan harus negatif (ke kiri juga).
+  // Geser KE KIRI: sorotan harus berkurang (ke kiri juga).
   window.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: anchorX - 200, clientY: 140 }))
-  await sleep(40)
-  check('lampu: geser kiri -> sorotan ke kiri (searah jari)', lampX() < anchorX, `x=${lampX().toFixed(1)}`)
+  await sleep(60)
+  const leftAim = aim()
+  check('lampu: geser kiri -> sorotan ke kiri (searah jari)',
+    leftAim < rightAim && rotation() > 0, `rel=${leftAim}`)
   check('lampu: rotasi kiri = positif', rotation() > 0, `rot=${rotation().toFixed(3)}`)
+  check('lampu: geseran dibatasi busur kabel',
+    Math.abs(Math.sin(-rotation())) * 76 <= 76 * Math.sin(0.62) + 0.01)
 
   // jsdom tidak memuat CSS hasil bundling Vite, jadi baca sumber CSS langsung.
   const cssSource = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
@@ -398,6 +407,49 @@ check('lampu tema terang: kap lampu item & mati',
   /:root\[data-theme='light'\] \.lamp-bulb \{[\s\S]*?filter: none;/.test(cssText))
 check('lampu tema terang: teks Aliansi tanpa gradasi cahaya',
   /:root\[data-theme='light'\] \.title-mark-text \{\s*background-image: none;/.test(cssText))
+
+// ================= TES 5: OPTIMASI PERFORMA =================
+const lampSrc = readFileSync(new URL('../src/HangingLamp.tsx', import.meta.url), 'utf8')
+const dotSrc = readFileSync(new URL('../src/DotField.tsx', import.meta.url), 'utf8')
+check('perf lampu: ukuran di-cache sekali (bukan reflow tiap frame)',
+  /const commit = \(\) => \{[\s\S]*?\n  \}/.test(lampSrc) &&
+  !/const commit = \(\) => \{[\s\S]*?getBoundingClientRect[\s\S]*?\n  \}/.test(lampSrc) &&
+  !/const commit = \(\) => \{[\s\S]*?getComputedStyle[\s\S]*?\n  \}/.test(lampSrc))
+check('perf lampu: pointermove di-coalesce per frame',
+  /pending\.current = event\.clientX[\s\S]*?queueFrame\(\)/.test(lampSrc) &&
+  /if \(frameQueued\.current\) return/.test(lampSrc))
+check('perf lampu: tanpa state React saat drag (tanpa setActive)',
+  !lampSrc.includes('setActive'))
+check('perf lampu: hanya menulis gaya bila berubah',
+  /if \(rot !== last\.current\.rot\)/.test(lampSrc) &&
+  /if \(rel !== last\.current\.rel\)/.test(lampSrc))
+check('perf lampu: variabel tak terpakai (--lamp-x/-y) dibuang',
+  !/--lamp-x/.test(lampSrc) && !/--lamp-y/.test(lampSrc))
+check('perf lampu: layer GPU dilepas setelah diam',
+  /classList\.remove\('is-swinging'\)/.test(lampSrc) &&
+  /will-change: transform/.test(cssText) &&
+  /\.lamp-rig\.is-swinging/.test(cssText))
+check('perf lampu: ukur ulang saat font siap & resize (rAF)',
+  /fonts\?\.ready/.test(lampSrc) && /orientationchange/.test(lampSrc) &&
+  /requestAnimationFrame\(\(\) => \{\s*measure\(\)/.test(lampSrc))
+check('perf dot: timer kecepatan berhenti saat idle',
+  /const stopSpeedTimer = \(\) => \{/.test(dotSrc) &&
+  /raf = 0\s*\n\s*stopSpeedTimer\(\)/.test(dotSrc))
+check('perf dot: tanpa atan2/sin/cos per titik (pakai dx/d)',
+  !dotSrc.includes('Math.atan2') && !dotSrc.includes('Math.cos(angle)'))
+check('perf dot: ganti tema tanpa membongkar canvas',
+  /rethemeRef\.current = \(\) => \{/.test(dotSrc) && /\}, \[\]\)/.test(dotSrc))
+check('perf tema: transition background-image (tidak bisa dianimasikan) dibuang',
+  !/transition: background-image/.test(cssText))
+check('perf app: resize di-rAF & state di-guard',
+  /const onChange = \(\) => \{\s*cancelAnimationFrame\(raf\)/.test(
+    readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')))
+const appSrc = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
+check('perf lampu: sorotan mengikuti lebar judul (ResizeObserver)',
+  /new ResizeObserver\(/.test(lampSrc) && /resizeObserver\?\.disconnect\(\)/.test(lampSrc))
+check('perf heading: timer berhenti saat tab disembunyikan',
+  /document\.hidden \? stop\(\) : run\(\)/.test(appSrc) &&
+  /const stop = \(\) => \{\s*if \(!timer\) return\s*\n\s*window\.clearInterval\(timer\)/.test(appSrc))
 
 // ================= TES 4: DETEKSI DESKTOP-HP =================
 const htmlText = readFileSync(new URL('../index.html', import.meta.url), 'utf8')

@@ -184,8 +184,8 @@ textarea:focus-visible {
   padding-top: clamp(140px, 18vh, 210px);
 }
 
-/* Kabel + kap lampu menggantung dari tengah atas. Satu sumber
-   (--lamp-x/--lamp-y) dipakai bola lampu dan sorotan teks. */
+/* Kabel + kap lampu menggantung dari tengah atas. Posisinya diatur lewat
+   transform (rotasi) oleh JS — GPU-friendly, tanpa reflow. */
 .lamp-rig {
   position: absolute;
   z-index: 4;
@@ -194,6 +194,14 @@ textarea:focus-visible {
   width: 0;
   height: 0;
   transform-origin: 0 0;
+  /* Hanya dinaikkan ke layer GPU saat digeser — biar tidak memakan memori
+     grafis saat idle, tapi tetap mulus saat berayun. */
+}
+
+.lamp-rig.is-dragging,
+.lamp-rig.is-swinging,
+.lamp-rig:active {
+  will-change: transform;
 }
 
 .lamp-cord {
@@ -201,14 +209,14 @@ textarea:focus-visible {
   left: 0;
   top: 0;
   width: 1px;
-  height: var(--cord-length, 76px);
+  height: 76px;
   background: linear-gradient(to bottom, rgba(255, 255, 255, 0.04), var(--border-strong) 65%, rgba(255, 255, 255, 0.7));
 }
 
 .lamp-head {
   position: absolute;
   left: 0;
-  top: var(--cord-length, 76px);
+  top: 76px;
   width: 76px;
   height: 58px;
   transform: translate(-50%, -50%);
@@ -298,8 +306,7 @@ textarea:focus-visible {
 
 /* Cahaya & bayangan LANGSUNG di huruf "Aliansi" (bukan background).
    background-clip:text bikin gradient cuma ngisi glyph — jadi nggak ada
-   kotak hitam. Pusat terang = posisi bola lampu (--lamp-x), dengan
-   transisi terang→gelap di sepanjang huruf. */
+   kotak hitam. Pusat terang digeser lewat --lamp-rel dari JS. */
 .title-mark {
   display: flex;
   justify-content: center;
@@ -313,7 +320,6 @@ textarea:focus-visible {
   font-weight: 500;
   letter-spacing: -0.04em;
   line-height: 1;
-  transition: background 0.18s linear;
 }
 
 .title-mark-text {
@@ -334,7 +340,8 @@ textarea:focus-visible {
   background-clip: text;
   color: transparent;
   -webkit-text-fill-color: transparent;
-  transition: background-image 0.08s linear;
+  /* background-image tidak bisa di-interpolasi browser, jadi tidak ada
+     transition di sini. Gerakan sudah halus karena dipicu tiap frame. */
 }
 
 /* Tema terang: lampu mati, jadi teks tidak disorot — warna solid biasa. */

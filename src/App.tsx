@@ -16,6 +16,27 @@ import {
 } from './drive'
 
 const THEME_KEY = 'aliansi-theme'
+
+const TITLE_HINTS = [
+  'Ingin menulis apa?',
+  'Halo, ada yang ingin diceritakan?',
+  'Ceritakan harimu di sini.',
+  'Mulai dari satu kalimat saja.',
+  'Apa yang sedang kamu pikirkan?',
+  'Tulis apa adanya, tak perlu sempurna.',
+  'Ada kisah yang ingin disimpan?',
+  'Hari ini bagaimana kabarmu?',
+  'Cerita kecil boleh jadi berarti.',
+  'Tulis dulu, nanti dirapikan juga boleh.',
+  'Di sini, kata-katamu aman.',
+  'Mau mulai dari mana?',
+  'Ceritakan saja, pelan-pelan.',
+  'Apa yang bikin kamu berhenti sejenak?',
+  'Cerita kamu, versi kamu.',
+  'Ada yang ingin kamu lepas hari ini?',
+  'Kalimat pertama biasanya yang paling jujur.',
+  'Simpan hari ini, baca lagi nanti.',
+]
 const dateFormat = new Intl.DateTimeFormat('id-ID', {
   day: 'numeric',
   month: 'long',
@@ -130,6 +151,24 @@ function TitleMark() {
   )
 }
 
+function TitleHint() {
+  const [index, setIndex] = useState(0)
+
+  useEffect(() => {
+    const timer = window.setInterval(
+      () => setIndex((current) => (current + 1) % TITLE_HINTS.length),
+      4000,
+    )
+    return () => window.clearInterval(timer)
+  }, [])
+
+  return (
+    <span key={index} className="input-placeholder">
+      {TITLE_HINTS[index]}
+    </span>
+  )
+}
+
 function Composer({ onAdd }: { onAdd: (entry: Entry) => void }) {
   const [title, setTitle] = useState('')
   const [author, setAuthor] = useState('')
@@ -171,27 +210,29 @@ function Composer({ onAdd }: { onAdd: (entry: Entry) => void }) {
       <form onSubmit={submit} noValidate>
         <label className="field">
           <span className="field-label">Judul</span>
-          <input
-            className="title-input"
-            value={title}
-            onChange={(event) => {
-              setTitle(event.target.value)
-              setError('')
-            }}
-            placeholder="Berjudul apa hari ini?"
-          />
+          <span className="input-wrap">
+            <input
+              className="title-input"
+              value={title}
+              onChange={(event) => {
+                setTitle(event.target.value)
+                setError('')
+              }}
+            />
+            {!title && <TitleHint />}
+          </span>
         </label>
 
         <div className="field-row">
           <label className="field">
-            <span className="field-label">Nama <span className="optional">opsional</span></span>
+            <span className="field-label">Nama</span>
             <input
               value={author}
               onChange={(event) => setAuthor(event.target.value)}
               placeholder="Anonim"
             />
           </label>
-          <div className="field">
+          <div className="field chips-field">
             <span className="field-label">Jenis</span>
             <div className="chips" role="group" aria-label="Jenis tulisan">
               {CATEGORIES.map((item) => (
@@ -210,7 +251,7 @@ function Composer({ onAdd }: { onAdd: (entry: Entry) => void }) {
         </div>
 
         <label className="field">
-          <span className="field-label">Isi cerita <span className="optional">tanpa batas</span></span>
+          <span className="field-label">Isi cerita</span>
           <textarea
             value={body}
             onChange={(event) => {
@@ -220,7 +261,6 @@ function Composer({ onAdd }: { onAdd: (entry: Entry) => void }) {
             placeholder="Tulis apa saja yang ingin kamu simpan atau bagikan…"
             rows={6}
           />
-          <span className="char-count">∞</span>
         </label>
 
         <div className="form-footer">
@@ -267,10 +307,10 @@ function EditForm({
       </label>
       <div className="field-row">
         <label className="field">
-          <span className="field-label">Nama <span className="optional">opsional</span></span>
+          <span className="field-label">Nama</span>
           <input value={author} onChange={(event) => setAuthor(event.target.value)} placeholder="Anonim" />
         </label>
-        <div className="field">
+        <div className="field chips-field">
           <span className="field-label">Jenis</span>
           <div className="chips" role="group" aria-label="Jenis tulisan">
             {CATEGORIES.map((item) => (
@@ -288,9 +328,8 @@ function EditForm({
         </div>
       </div>
       <label className="field">
-        <span className="field-label">Isi cerita <span className="optional">tanpa batas</span></span>
+        <span className="field-label">Isi cerita</span>
         <textarea value={body} onChange={(event) => setBody(event.target.value)} rows={5} />
-        <span className="char-count">∞</span>
       </label>
       <div className="form-footer">
         <button type="button" className="ghost-button" onClick={onCancel}>Batal</button>
@@ -626,26 +665,24 @@ export default function App() {
     <div className="site" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       <header className="topbar">
         <span className="topbar-brand">RUANG CERITA</span>
-        <div className="topbar-actions">
-          <button
-            type="button"
-            className="text-button drive-button"
-            onClick={() => setSettingsOpen(true)}
-            title="Atur penyimpanan Google Drive"
-          >
-            <span className={`status-dot${driveUrl ? (syncError ? ' is-error' : ' is-on') : ''}`} />
-            Drive
-          </button>
-          <button
-            type="button"
-            className="theme-button"
-            onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
-            aria-label={theme === 'dark' ? 'Ganti ke tema terang' : 'Ganti ke tema gelap'}
-            title={theme === 'dark' ? 'Tema terang' : 'Tema gelap'}
-          >
-            {theme === 'dark' ? <MoonIcon /> : <SunIcon />}
-          </button>
-        </div>
+        <button
+          type="button"
+          className="drive-button"
+          onClick={() => setSettingsOpen(true)}
+          title="Atur penyimpanan Google Drive"
+        >
+          <span className={`status-dot${driveUrl ? (syncError ? ' is-error' : ' is-on') : ''}`} />
+          Drive
+        </button>
+        <button
+          type="button"
+          className="theme-button"
+          onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+          aria-label={theme === 'dark' ? 'Ganti ke tema terang' : 'Ganti ke tema gelap'}
+          title={theme === 'dark' ? 'Tema terang' : 'Tema gelap'}
+        >
+          {theme === 'dark' ? <MoonIcon /> : <SunIcon />}
+        </button>
       </header>
 
       <main>

@@ -174,7 +174,14 @@ textarea:focus-visible {
   position: relative;
   isolation: isolate;
   text-align: center;
-  padding: clamp(130px, 20vh, 190px) 0 clamp(48px, 8vh, 80px);
+  padding: clamp(24px, 4vh, 44px) 0 clamp(48px, 8vh, 80px);
+}
+
+/* Acuan posisi lampu: kabel menggantung dari atas blok teks ini,
+   jadi sorotan selalu jatuh tepat di atas huruf "Aliansi". */
+.hero-inner {
+  position: relative;
+  padding-top: 104px;
 }
 
 /* Kabel + kap lampu menggantung dari tengah atas. Satu sumber
@@ -240,25 +247,15 @@ textarea:focus-visible {
   stroke-linecap: round;
 }
 
+/* Tanpa piringan cahaya di sekitar kap lampu (itu yang kelihatan seperti UFO).
+   Cahaya hanya dua: glow tipis di bola lampu & sorotan di huruf "Aliansi". */
+.lamp-halo {
+  display: none;
+}
+
 .lamp-bulb {
   fill: #ffffff;
-  filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.95));
-}
-
-.lamp-halo {
-  position: absolute;
-  left: 50%;
-  bottom: -6px;
-  width: 120px;
-  height: 40px;
-  border-radius: 50%;
-  background: radial-gradient(ellipse, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.2) 45%, transparent 72%);
-  transform: translateX(-50%);
-  pointer-events: none;
-}
-
-:root[data-theme='light'] .lamp-halo {
-  background: radial-gradient(ellipse, rgba(255, 250, 225, 0.65), transparent 72%);
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.85)) drop-shadow(0 2px 3px rgba(255, 255, 255, 0.5));
 }
 
 .eyebrow {
@@ -1144,11 +1141,25 @@ textarea:focus-visible {
 @media (max-width: 720px) {
   .site {
     width: min(100% - 28px, 1120px);
+    /* Satu layar utuh: header + halaman + dots, tanpa scroll. */
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .site > main {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
 
   .topbar {
     grid-template-columns: auto 1fr auto;
     padding: 16px 0 4px;
+    flex: 0 0 auto;
   }
 
   .topbar-brand {
@@ -1165,8 +1176,44 @@ textarea:focus-visible {
     justify-self: end;
   }
 
+  /* Setiap halaman mengisi sisa layar, konten di tengah. */
+  .page-view {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    overflow: hidden;
+  }
+
   .hero {
-    padding: 120px 0 56px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .hero-inner {
+    padding-top: 84px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .hero .eyebrow {
+    display: none;
+  }
+
+  .hero .title-mark {
+    font-size: clamp(46px, 15vw, 68px);
+    margin-top: 14px;
+  }
+
+  .hero-subtitle {
+    margin: 14px auto 0;
+    max-width: 30ch;
+  }
+
+  .hero-link {
+    margin-top: 20px;
   }
 
   .section-heading {
@@ -1177,24 +1224,45 @@ textarea:focus-visible {
     font-size: 27px;
   }
 
-  .section-note {
+  /* Halaman 2: tanpa judul ALIANSI, form mengisi layar. */
+  .composer {
+    width: 100%;
     max-width: none;
-    margin-top: 6px;
-    font-size: 11px;
-    text-align: left;
+    margin: 0;
+    padding: 18px;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
   }
 
-  .composer {
-    padding: 20px 18px;
+  /* Judul "Sebuah cerita..." dibuang di HP — cukup form-nya saja. */
+  .composer .section-heading {
+    display: none;
+  }
+
+  .composer form {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .composer .field textarea {
+    min-height: 96px;
+    max-height: 22dvh;
   }
 
   .field {
-    margin-top: 16px;
+    margin-top: 12px;
   }
 
   .field input,
   .field textarea {
-    padding: 9px 0;
+    padding: 8px 0;
   }
 
   .title-input {
@@ -1220,25 +1288,21 @@ textarea:focus-visible {
     font-size: 11px;
   }
 
-  .field textarea {
-    min-height: 118px;
-  }
-
   .form-footer {
     align-items: stretch;
     flex-direction: column;
-    gap: 10px;
-    margin-top: 16px;
+    gap: 8px;
+    margin-top: 12px;
   }
 
   .primary-button {
     justify-content: center;
-    padding: 13px 20px;
+    padding: 12px 20px;
     font-size: 10px;
   }
 
   .archive {
-    margin-top: 52px;
+    margin-top: 0;
   }
 
   .archive-tools {
@@ -1253,14 +1317,27 @@ textarea:focus-visible {
 
   .entry-grid {
     grid-template-columns: 1fr;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 8px;
   }
 
   .entry-card {
     padding: 22px;
   }
 
+  /* Footer tidak ikut — biar halaman tetap satu layar. */
   .footer {
-    margin-top: 56px;
+    display: none;
+  }
+
+  /* Dots jadi bagian layout, nempel di bawah layar (bukan floating). */
+  .page-dots {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 14px 0 18px;
   }
 }
 
@@ -1271,7 +1348,7 @@ textarea:focus-visible {
   }
 
   .hero {
-    padding: 120px 0 48px;
+    padding: 24px 0 48px;
   }
 
   .title-mark {
@@ -1408,7 +1485,7 @@ html[data-desktop-site="true"] .theme-button {
 }
 
 html[data-desktop-site='true'] .hero {
-  padding: 120px 0 56px;
+  padding: 24px 0 56px;
 }
 
 html[data-desktop-site="true"] .section-heading {

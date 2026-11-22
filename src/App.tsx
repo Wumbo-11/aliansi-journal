@@ -879,18 +879,27 @@ export default function App() {
   const pageOrder: Array<'welcome' | 'compose' | 'archive'> = ['welcome', 'compose', 'archive']
 
   const onTouchStart = (event: TouchEvent) => {
-    touchStart.current = {
-      x: event.touches[0].clientX,
-      y: event.touches[0].clientY,
-    }
+    const touch = event.touches?.[0]
+    if (!touch) return
+    touchStart.current = { x: touch.clientX, y: touch.clientY }
   }
 
   const onTouchEnd = (event: TouchEvent) => {
     if (!isMobile) return
+    const touch = event.changedTouches?.[0]
+    if (!touch) return
     const target = event.target as HTMLElement | null
-    if (target?.closest('input, textarea, .lamp-rig')) return
-    const dx = event.changedTouches[0].clientX - touchStart.current.x
-    const dy = event.changedTouches[0].clientY - touchStart.current.y
+    // Lampu punya gesture sendiri (digeser mengikuti kabel).
+    if (target?.closest('.lamp-rig')) return
+    const dx = touch.clientX - touchStart.current.x
+    const dy = touch.clientY - touchStart.current.y
+    // Swipe horizontal yang tegas tetap pindah halaman, meskipun dimulai
+    // dari dalam kotak form — asalkan bukan seleksi teks di kolom isian.
+    const inField = target?.closest('input, textarea')
+    const selection = window.getSelection?.()
+    const selecting = !!inField && !!selection && !selection.isCollapsed &&
+      (selection.toString().length ?? 0) > 0
+    if (selecting) return
     if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.3) {
       const current = pageOrder.indexOf(page)
       const next = current + (dx < 0 ? 1 : -1)
@@ -930,20 +939,22 @@ export default function App() {
       <main>
         {showWelcome && (
           <section className="hero page-view">
-            <HangingLamp />
-            <span className="eyebrow">Aliansi · sejak hari ini</span>
-            <TitleMark />
-            <div className="ornament" aria-hidden="true"><span /></div>
-            <p className="hero-subtitle">
-              Tempat cerita disimpan, hari dibagikan, dan suara kecil tetap berarti.
-            </p>
-            <button
-              type="button"
-              className="hero-link"
-              onClick={() => (isMobile ? goToPage('compose') : jumpToComposer())}
-            >
-              Mulai menulis <span aria-hidden="true">→</span>
-            </button>
+            <div className="hero-inner">
+              <HangingLamp />
+              <span className="eyebrow">Aliansi · sejak hari ini</span>
+              <TitleMark />
+              <div className="ornament" aria-hidden="true"><span /></div>
+              <p className="hero-subtitle">
+                Tempat cerita disimpan, hari dibagikan, dan suara kecil tetap berarti.
+              </p>
+              <button
+                type="button"
+                className="hero-link"
+                onClick={() => (isMobile ? goToPage('compose') : jumpToComposer())}
+              >
+                Mulai menulis <span aria-hidden="true">→</span>
+              </button>
+            </div>
           </section>
         )}
 

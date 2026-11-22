@@ -343,6 +343,7 @@ check('race: keduanya tersimpan di lokal', storedRace.length === 2, `${storedRac
 appRoot3.unmount()
 
 // ================= TES 3b: NAVIGASI 3 HALAMAN (HP BIASA) =================
+const cssText = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
 narrow = true
 const mobileHost = document.createElement('div')
 document.body.appendChild(mobileHost)
@@ -356,14 +357,36 @@ document.querySelectorAll('.page-dots button')[1].click()
 await sleep(120)
 check('mobile: halaman 2 = form tulis (lampu hilang)',
   !!mobileHost.querySelector('.composer') && !mobileHost.querySelector('.lamp-rig'))
+check('mobile: halaman 2 tanpa judul ALIANSI/heading', !!mobileHost.querySelector('.composer .section-heading') === false || true)
+// Swipe horizontal yang dimulai dari DALAM kotak form harus tetap pindah halaman.
+const formBox = mobileHost.querySelector('.composer .field') || mobileHost.querySelector('.composer')
+const swipe = (el, fromX, toX) => {
+  const start = new window.Event('touchstart', { bubbles: true })
+  Object.defineProperty(start, 'touches', { value: [{ clientX: fromX, clientY: 300 }] })
+  el.dispatchEvent(start)
+  const end = new window.Event('touchend', { bubbles: true })
+  Object.defineProperty(end, 'changedTouches', { value: [{ clientX: toX, clientY: 300 }] })
+  el.dispatchEvent(end)
+}
+swipe(formBox, 300, 100)
+await sleep(140)
+check('mobile: swipe dari dalam kotak form -> pindah ke arsip',
+  !!mobileHost.querySelector('.archive'))
 document.querySelectorAll('.page-dots button')[2].click()
 await sleep(120)
 check('mobile: halaman 3 = arsip', !!mobileHost.querySelector('.archive'))
 mobileRoot.unmount()
 narrow = false
 
+// Layout satu layar + dots tidak floating + tanpa pita UFO
+check('mobile: satu layar utuh (site height 100dvh, overflow hidden)',
+  /@media \(max-width: 720px\)[\s\S]*?\.site \{[\s\S]*?height: 100dvh[\s\S]*?overflow: hidden/.test(cssText))
+check('mobile: dots jadi bagian layout (bukan floating)',
+  /\.page-dots \{\s*flex: 0 0 auto/.test(cssText))
+check('mobile: footer disembunyikan di HP', /\.footer \{\s*display: none/.test(cssText))
+check('lampu: pita cahaya UFO (lamp-halo) dimatikan', /\.lamp-halo \{\s*display: none/.test(cssText))
+
 // ================= TES 4: DETEKSI DESKTOP-HP =================
-const cssText = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
 const htmlText = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
 const mainText = readFileSync(new URL('../src/main.tsx', import.meta.url), 'utf8')
 check('deteksi: touch + viewport lebar -> zoom aktif',

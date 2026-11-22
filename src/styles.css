@@ -749,11 +749,31 @@ textarea:focus-visible {
   color: var(--accent);
 }
 
-.drive-plus {
+.add-drive-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 4px 0;
+  border: 0;
+  background: none;
   color: var(--accent);
-  font-size: 13px;
-  font-weight: 400;
-  letter-spacing: 0;
+  font-size: 12px;
+  transition: opacity 0.2s ease;
+}
+
+.add-drive-button:hover {
+  opacity: 0.7;
+}
+
+.add-drive-button span {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--accent);
+  border-radius: 50%;
+  font-size: 15px;
   line-height: 1;
 }
 

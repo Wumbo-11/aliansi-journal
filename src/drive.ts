@@ -137,11 +137,10 @@ export async function deleteEntryRemote(url: string, id: string): Promise<void> 
  * Cara ini jalan di script yang sudah ter-deploy (belum punya action 'update').
  */
 export async function updateEntryRemote(url: string, next: Entry): Promise<Entry> {
-  const saved = await addEntryRemote(url, { ...next, id: crypto.randomUUID() })
-  try {
-    await deleteEntryRemote(url, next.id)
-  } catch {
-    // File lama gagal dihapus — cerita baru tetap tersimpan.
-  }
+  // Kirim tambah & hapus bersamaan supaya nggak nunggu dua round-trip berurutan.
+  const [saved] = await Promise.all([
+    addEntryRemote(url, { ...next, id: crypto.randomUUID() }),
+    deleteEntryRemote(url, next.id).catch(() => undefined),
+  ])
   return saved
 }

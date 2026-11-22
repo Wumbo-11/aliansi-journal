@@ -465,6 +465,18 @@ function DriveSettings({
           />
         </label>
 
+        <button
+          type="button"
+          className="add-drive-button"
+          onClick={() => {
+            setDraft('')
+            setError('')
+          }}
+          title="Isi URL Web App milikmu sendiri"
+        >
+          <span aria-hidden="true">+</span> Tambah Drive sendiri
+        </button>
+
         <p className={`modal-error${error ? ' is-visible' : ''}`} role="alert">{error || '\u00a0'}</p>
 
         <div className="modal-actions">
@@ -601,17 +613,26 @@ export default function App() {
 
   const saveEdit = (next: Entry) => {
     const oldId = next.id
-    if (!driveUrl) {
-      commit(entries.map((entry) => (entry.id === oldId ? next : entry)))
-      setEditingId(null)
-      return
-    }
+
+    // Perubahan ditampilkan SEKETIKA, sinkron ke Drive jalan di belakang layar.
+    setEntries((current) => {
+      const updated = current.map((entry) => (entry.id === oldId ? next : entry))
+      writeEntries(updated)
+      return updated
+    })
+    setEditingId(null)
+
+    if (!driveUrl) return
+
     updateEntryRemote(driveUrl, next)
       .then((saved) => {
-        commit(entries.map((entry) => (entry.id === oldId ? saved : entry)))
+        setEntries((current) => {
+          const updated = current.map((entry) => (entry.id === oldId ? saved : entry))
+          writeEntries(updated)
+          return updated
+        })
         unmarkOwned(oldId)
         markOwned(saved.id)
-        setEditingId(null)
         setSyncError('')
       })
       .catch((error: unknown) => {
@@ -675,7 +696,6 @@ export default function App() {
         >
           <span className={`status-dot${driveUrl ? (syncError ? ' is-error' : ' is-on') : ''}`} />
           Drive
-          <span className="drive-plus" aria-hidden="true">+</span>
         </button>
         <button
           type="button"

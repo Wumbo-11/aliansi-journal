@@ -1248,3 +1248,146 @@ textarea:focus-visible {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ── Chrome Android "Desktop site": viewport ~980px dikompres ke layar HP.
+   Pakai layout HP yang sama (rule di atas) di dalam wadah selebar layar asli,
+   lalu zoom wadah itu supaya teks terbaca. Mode HP biasa TIDAK kena ini. ── */
+
+html[data-desktop-site="true"] .site {
+  width: min(100% - 28px, 1120px);
+}
+
+html[data-desktop-site="true"] .topbar {
+  grid-template-columns: auto 1fr auto;
+  padding: 16px 0 4px;
+}
+
+html[data-desktop-site="true"] .topbar-brand {
+  display: none;
+}
+
+html[data-desktop-site="true"] .drive-button {
+  grid-column: 1;
+  justify-self: start;
+}
+
+html[data-desktop-site="true"] .theme-button {
+  grid-column: 3;
+  justify-self: end;
+}
+
+html[data-desktop-site="true"] .hero {
+  padding: 44px 0 56px;
+}
+
+html[data-desktop-site="true"] .section-heading {
+  display: block;
+}
+
+html[data-desktop-site="true"] .section-heading h2 {
+  font-size: 27px;
+}
+
+html[data-desktop-site="true"] .section-note {
+  max-width: none;
+  margin-top: 6px;
+  font-size: 11px;
+  text-align: left;
+}
+
+html[data-desktop-site="true"] .composer {
+  padding: 20px 18px;
+}
+
+html[data-desktop-site="true"] .field {
+  margin-top: 16px;
+}
+
+html[data-desktop-site="true"] .field input,
+html[data-desktop-site="true"] .field textarea {
+  padding: 9px 0;
+}
+
+html[data-desktop-site="true"] .title-input {
+  font-size: 17px !important;
+}
+
+html[data-desktop-site="true"] .input-placeholder {
+  font-size: 17px;
+}
+
+html[data-desktop-site="true"] .field-row {
+  grid-template-columns: 1fr;
+  gap: 2px;
+}
+
+html[data-desktop-site="true"] .chips {
+  gap: 6px;
+  padding-top: 6px;
+}
+
+html[data-desktop-site="true"] .chip {
+  padding: 7px 12px;
+  font-size: 11px;
+}
+
+html[data-desktop-site="true"] .field textarea {
+  min-height: 118px;
+}
+
+html[data-desktop-site="true"] .form-footer {
+  align-items: stretch;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+html[data-desktop-site="true"] .primary-button {
+  justify-content: center;
+  padding: 13px 20px;
+  font-size: 10px;
+}
+
+html[data-desktop-site="true"] .archive {
+  margin-top: 52px;
+}
+
+html[data-desktop-site="true"] .archive-tools {
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+html[data-desktop-site="true"] .search-field {
+  max-width: none;
+}
+
+html[data-desktop-site="true"] .entry-grid {
+  grid-template-columns: 1fr;
+}
+
+html[data-desktop-site="true"] .entry-card {
+  padding: 22px;
+}
+
+html[data-desktop-site="true"] .footer {
+  margin-top: 56px;
+}
+
+
+html[data-desktop-site='true'] .site {
+  width: calc(100vw / var(--desktop-zoom, 2.7));
+  zoom: var(--desktop-zoom, 2.7);
+}
+html[data-desktop-site='true'] .title-mark {
+  font-size: 60px;
+}
+html[data-desktop-site='true'] .archive-heading h2 {
+  font-size: 34px;
+}
+html[data-desktop-site='true'] .hero-subtitle {
+  max-width: 100%;
+}
+html[data-desktop-site='true'] .footer-wordmark {
+  font-size: 52px;
+}

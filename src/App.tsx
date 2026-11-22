@@ -49,6 +49,14 @@ const dateFormat = new Intl.DateTimeFormat('id-ID', {
   year: 'numeric',
 })
 
+/** HP biasa, atau Chrome Android dengan "Desktop site" aktif. */
+function isCompactView(): boolean {
+  return (
+    document.documentElement.dataset.desktopSite === 'true' ||
+    window.matchMedia('(max-width: 720px)').matches
+  )
+}
+
 function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(
     () => window.matchMedia('(prefers-reduced-motion: reduce)').matches,
@@ -599,9 +607,7 @@ export default function App() {
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<'new' | 'old'>('new')
   const [page, setPage] = useState<'home' | 'archive'>('home')
-  const [isMobile, setIsMobile] = useState(
-    () => window.matchMedia('(max-width: 720px)').matches,
-  )
+  const [isMobile, setIsMobile] = useState(isCompactView)
   const [editingId, setEditingId] = useState<string | null>(null)
   const touchStart = useRef({ x: 0, y: 0 })
   // Perubahan lokal terbaru (optimistik & yang baru selesai) diingat sampai
@@ -654,9 +660,13 @@ export default function App() {
 
   useEffect(() => {
     const queryMobile = window.matchMedia('(max-width: 720px)')
-    const onChange = () => setIsMobile(queryMobile.matches)
+    const onChange = () => setIsMobile(isCompactView())
     queryMobile.addEventListener('change', onChange)
-    return () => queryMobile.removeEventListener('change', onChange)
+    window.addEventListener('resize', onChange)
+    return () => {
+      queryMobile.removeEventListener('change', onChange)
+      window.removeEventListener('resize', onChange)
+    }
   }, [])
 
   useEffect(() => {

@@ -16,6 +16,34 @@
         document.documentElement.dataset.theme = 'dark'
       }
     </script>
+    <script>
+      // Chrome Android "Desktop site": viewport layout jadi ~980px lalu dikecilin
+      // ke layar HP. Kembalikan ke ukuran asli dengan zoom terukur.
+      (function () {
+        var root = document.documentElement
+        function detect() {
+          var touch = navigator.maxTouchPoints > 0 || 'ontouchstart' in window
+          var screenW = (window.screen && window.screen.width) || 0
+          var vv = window.visualViewport
+          var vvW = vv && vv.width && vv.scale ? vv.width * vv.scale : 0
+          var deviceW = screenW && screenW <= 720 ? screenW : vvW || screenW
+          var layoutW = window.innerWidth
+          if (touch && layoutW > 720 && deviceW && deviceW <= 720) {
+            root.dataset.desktopSite = 'true'
+            root.style.setProperty(
+              '--desktop-zoom',
+              String(Math.min(3.2, Math.max(1.5, layoutW / deviceW))),
+            )
+          } else {
+            delete root.dataset.desktopSite
+            root.style.removeProperty('--desktop-zoom')
+          }
+        }
+        detect()
+        window.addEventListener('resize', detect)
+        window.addEventListener('orientationchange', detect)
+      })()
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

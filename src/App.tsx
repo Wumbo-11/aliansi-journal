@@ -388,6 +388,9 @@ function EntryCard({
   onSaveEdit: (next: Entry) => void
   onCancelEdit: () => void
 }) {
+  const [expanded, setExpanded] = useState(false)
+  const isLong = entry.body.length > 160
+
   return (
     <article className="entry-card panel" style={{ animationDelay: `${Math.min(index, 8) * 45}ms` }}>
       <div className="entry-top">
@@ -400,12 +403,19 @@ function EntryCard({
       {editing ? (
         <EditForm entry={entry} onSave={onSaveEdit} onCancel={onCancelEdit} />
       ) : (
-        <p className="entry-body">{entry.body}</p>
+        <>
+          <p className={`entry-body${expanded ? ' is-expanded' : ''}`}>{entry.body}</p>
+          {isLong && (
+            <button type="button" className="read-more" onClick={() => setExpanded((value) => !value)}>
+              {expanded ? 'Tutup' : 'Baca selengkapnya'} <span aria-hidden="true">{expanded ? '↑' : '↓'}</span>
+            </button>
+          )}
+        </>
       )}
       <div className="entry-footer">
         <span className="entry-author">— {entry.author || 'Anonim'}</span>
-        <div className="entry-actions">
-          {owned && (
+        {owned && !editing && (
+          <div className="entry-actions">
             <button
               type="button"
               className="edit-button"
@@ -415,18 +425,18 @@ function EntryCard({
             >
               <PencilIcon />
             </button>
-          )}
-          <button
-            type="button"
-            className="delete-button"
-            onClick={() => {
-              if (window.confirm('Hapus tulisan ini?')) onDelete(entry.id)
-            }}
-            aria-label={`Hapus ${entry.title}`}
-          >
-            <TrashIcon />
-          </button>
-        </div>
+            <button
+              type="button"
+              className="delete-button"
+              onClick={() => {
+                if (window.confirm('Hapus tulisan ini?')) onDelete(entry.id)
+              }}
+              aria-label={`Hapus ${entry.title}`}
+            >
+              <TrashIcon />
+            </button>
+          </div>
+        )}
       </div>
     </article>
   )
@@ -825,7 +835,6 @@ export default function App() {
       </main>
 
       <footer className="footer">
-        <span className="footer-mark">A</span>
         <p>Aliansi — ruang untuk cerita yang dibagi.</p>
         <Reveal>
           <div className="footer-wordmark" aria-hidden="true">ALIANSI</div>

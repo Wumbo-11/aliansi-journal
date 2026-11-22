@@ -208,9 +208,14 @@ if (lamp) {
   await sleep(40)
   check('lampu: jadi aktif saat disentuh', lamp.classList.contains('is-dragging'))
   window.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: 260, clientY: 160 }))
+  await sleep(40)
   check('lampu: cahaya ikut diatur (CSS var terisi)',
     !!lamp.parentElement?.style.getPropertyValue('--lamp-x') &&
     !!lamp.parentElement?.style.getPropertyValue('--lamp-y'))
+  const lampX = Number.parseFloat(lamp.parentElement?.style.getPropertyValue('--lamp-x') || '999')
+  check('lampu: geseran dibatasi panjang kabel', lampX <= 50 && lampX >= -50, `x=${lampX}`)
+  check('lampu: ada layer sorotan & bayangan real-time',
+    !!document.querySelector('.hero-light') && !!document.querySelector('.hero-shadow'))
   window.dispatchEvent(new window.MouseEvent('pointerup', { bubbles: true }))
   await sleep(40)
   check('lampu: berhenti aktif setelah dilepas', !lamp.classList.contains('is-dragging'))

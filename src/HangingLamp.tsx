@@ -1,70 +1,81 @@
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 
+const CORD = 76
+const MAX_ANGLE = 0.66 // ~38° — batas ayunan mengikuti panjang kabel
+
 /**
- * Lampu gantung interaktif di hero. Bisa digeser pakai jari/mouse;
- * kolam cahaya & bayangan mengikuti posisinya lewat CSS variable.
- * Sengaja tanpa scroll listener/supaya scroll tetap ringan.
+ * Lampu gantung pendulum: posisi vertical paten (panjang kabel tetap),
+ * hanya bisa bergeser mengikuti busur kabel. Cahaya putih & bayangan
+ * dihitung real-time dari sudut ayunan lewat CSS variable di hero.
  */
 export default function HangingLamp() {
   const rigRef = useRef<HTMLDivElement>(null)
-  const pos = useRef({ x: 0, y: 0 })
-  const grab = useRef({ x: 0, y: 0 })
+  const angle = useRef(0)
+  const velocity = useRef(0)
   const dragging = useRef(false)
+  const raf = useRef(0)
   const [active, setActive] = useState(false)
 
-  const heroBox = () => {
-    const hero = rigRef.current?.parentElement
-    if (!hero) return { width: window.innerWidth, height: 400 }
-    const rect = hero.getBoundingClientRect()
-    const zoom = Number.parseFloat(window.getComputedStyle(hero).zoom) || 1
-    return { width: rect.width / zoom, height: rect.height / zoom }
-  }
-
-  const apply = (x: number, y: number) => {
+  const render = () => {
     const rig = rigRef.current
     const hero = rig?.parentElement
     if (!rig || !hero) return
-    const { width, height } = heroBox()
-    const px = Math.max(54, Math.min(width - 54, x))
-    const py = Math.max(20, Math.min(height * 0.6, y))
-    pos.current = { x: px, y: py }
-    rig.style.left = `${px}px`
-    rig.style.top = `${py}px`
-    rig.style.setProperty('--cord-length', `${py}px`)
-    hero.style.setProperty('--lamp-x', `${px}px`)
-    hero.style.setProperty('--lamp-y', `${py}px`)
+    rig.style.transform = `rotate(${angle.current}rad)`
+    const rect = hero.getBoundingClientRect()
+    const zoom = Number.parseFloat(window.getComputedStyle(hero).zoom) || 1
+    const anchorX = rect.width / zoom / 2
+    const bx = anchorX + Math.sin(angle.current) * CORD
+    const by = Math.cos(angle.current) * CORD
+    hero.style.setProperty('--lamp-x', `${bx}px`)
+    hero.style.setProperty('--lamp-y', `${by}px`)
+    rig.style.setProperty('--cord-length', `${CORD}px`)
+  }
+
+  const aimAt = (clientX: number) => {
+    const hero = rigRef.current?.parentElement
+    if (!hero) return
+    const rect = hero.getBoundingClientRect()
+    const zoom = Number.parseFloat(window.getComputedStyle(hero).zoom) || 1
+    const anchorX = rect.width / zoom / 2
+    const dx = (clientX - rect.left) / zoom - anchorX
+    const ratio = Math.max(-Math.sin(MAX_ANGLE), Math.min(Math.sin(MAX_ANGLE), dx / CORD))
+    angle.current = Math.asin(ratio)
+    render()
+  }
+
+  const swingBack = () => {
+    cancelAnimationFrame(raf.current)
+    const step = () => {
+      velocity.current += -angle.current * 0.06
+      velocity.current *= 0.93
+      angle.current += velocity.current
+      render()
+      if (Math.abs(angle.current) > 0.0015 || Math.abs(velocity.current) > 0.0015) {
+        raf.current = requestAnimationFrame(step)
+      } else {
+        angle.current = 0
+        velocity.current = 0
+        render()
+      }
+    }
+    raf.current = requestAnimationFrame(step)
   }
 
   useEffect(() => {
-    const hero = rigRef.current?.parentElement
-    if (!hero) return
-    const box = heroBox()
-    apply(box.width / 2, Math.min(110, box.height * 0.16))
-    const onResize = () => {
-      const next = heroBox()
-      apply(pos.current.x || next.width / 2, pos.current.y || 100)
-    }
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
+    render()
+    return () => cancelAnimationFrame(raf.current)
   }, [])
 
   useEffect(() => {
     const onMove = (event: PointerEvent) => {
-      if (!dragging.current) return
-      const hero = rigRef.current?.parentElement
-      if (!hero) return
-      const rect = hero.getBoundingClientRect()
-      const zoom = Number.parseFloat(window.getComputedStyle(hero).zoom) || 1
-      apply(
-        (event.clientX - rect.left - grab.current.x) / zoom,
-        (event.clientY - rect.top - grab.current.y) / zoom,
-      )
+      if (dragging.current) aimAt(event.clientX)
     }
     const onUp = () => {
       if (!dragging.current) return
       dragging.current = false
       setActive(false)
+      swingBack()
     }
     window.addEventListener('pointermove', onMove, { passive: true })
     window.addEventListener('pointerup', onUp)
@@ -77,34 +88,32 @@ export default function HangingLamp() {
   }, [])
 
   const onDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const hero = rigRef.current?.parentElement
-    if (!hero) return
-    const rect = hero.getBoundingClientRect()
-    grab.current = {
-      x: event.clientX - rect.left - pos.current.x,
-      y: event.clientY - rect.top - pos.current.y,
-    }
     dragging.current = true
+    velocity.current = 0
+    cancelAnimationFrame(raf.current)
     setActive(true)
+    aimAt(event.clientX)
     event.preventDefault()
   }
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    const step = event.shiftKey ? 30 : 12
-    const moves: Record<string, [number, number]> = {
-      ArrowLeft: [-step, 0],
-      ArrowRight: [step, 0],
-      ArrowUp: [0, -step],
-      ArrowDown: [0, step],
-    }
+    const step = event.shiftKey ? 0.16 : 0.07
     if (event.key === 'Home') {
-      apply(heroBox().width / 2, 100)
-      event.preventDefault()
+      cancelAnimationFrame(raf.current)
+      angle.current = 0
+      velocity.current = 0
+      render()
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      cancelAnimationFrame(raf.current)
+      const dir = event.key === 'ArrowLeft' ? -1 : 1
+      angle.current = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, angle.current + step * dir))
+      render()
+    } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      // Kabel paten — naik/turun tidak mengubah posisi, tetap di busur.
+      return
+    } else {
       return
     }
-    const move = moves[event.key]
-    if (!move) return
-    apply(pos.current.x + move[0], pos.current.y + move[1])
     event.preventDefault()
   }
 
@@ -116,16 +125,18 @@ export default function HangingLamp() {
       onKeyDown={onKeyDown}
       role="button"
       tabIndex={0}
-      aria-label="Geser lampu. Pakai tombol panah untuk memindahkannya."
+      aria-label="Geser lampu mengikuti kabel. Pakai tombol panah kiri/kanan."
     >
       <span className="lamp-cord" aria-hidden="true" />
-      <svg className="lamp-shade" viewBox="0 0 80 58" aria-hidden="true">
-        <path d="M40 3 L40 14" className="lamp-wire" />
-        <path d="M14 48 Q40 10 66 48 Z" className="lamp-body" />
-        <path d="M12 48 Q40 56 68 48" className="lamp-rim" />
-        <circle cx="40" cy="50" r="6" className="lamp-bulb" />
-      </svg>
-      <span className="lamp-halo" aria-hidden="true" />
+      <div className="lamp-head">
+        <svg className="lamp-shade" viewBox="0 0 80 58" aria-hidden="true">
+          <path d="M40 3 L40 14" className="lamp-wire" />
+          <path d="M14 48 Q40 10 66 48 Z" className="lamp-body" />
+          <path d="M12 48 Q40 56 68 48" className="lamp-rim" />
+          <circle cx="40" cy="50" r="6" className="lamp-bulb" />
+        </svg>
+        <span className="lamp-halo" aria-hidden="true" />
+      </div>
     </div>
   )
 }

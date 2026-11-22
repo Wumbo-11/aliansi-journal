@@ -6,9 +6,9 @@ import {
   addEntryRemote,
   deleteEntryRemote,
   getDriveUrl,
+  initOwnedWith,
   listEntries,
   readEntries,
-  readOwned,
   setDriveUrl,
   updateEntryRemote,
   writeEntries,
@@ -488,7 +488,9 @@ export default function App() {
   )
   const [driveUrl, setUrl] = useState(getDriveUrl)
   const [entries, setEntries] = useState<Entry[]>(readEntries)
-  const [owned, setOwned] = useState<string[]>(readOwned)
+  const [owned, setOwned] = useState<string[]>(() =>
+    initOwnedWith(readEntries().map((entry) => entry.id)),
+  )
   const [loading, setLoading] = useState(false)
   const [syncError, setSyncError] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -673,6 +675,7 @@ export default function App() {
         >
           <span className={`status-dot${driveUrl ? (syncError ? ' is-error' : ' is-on') : ''}`} />
           Drive
+          <span className="drive-plus" aria-hidden="true">+</span>
         </button>
         <button
           type="button"

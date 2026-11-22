@@ -4,6 +4,20 @@ import { isEntry } from './types'
 export const DRIVE_URL_KEY = 'aliansi-journal/drive-url'
 export const LOCAL_KEY = 'aliansi-journal/v1'
 export const OWNED_KEY = 'aliansi-journal/owned'
+const OWNER_TOKEN_KEY = 'aliansi-journal/owner-token'
+
+/** Kunci rahasia per perangkat, dipakai script buat ngecek kepemilikan cerita. */
+function getOwnerToken(): string {
+  try {
+    const saved = localStorage.getItem(OWNER_TOKEN_KEY)
+    if (saved) return saved
+    const token = crypto.randomUUID()
+    localStorage.setItem(OWNER_TOKEN_KEY, token)
+    return token
+  } catch {
+    return crypto.randomUUID()
+  }
+}
 
 const DEFAULT_DRIVE_URL =
   'https://script.google.com/macros/s/AKfycbz59vEV5ew_Xh3e4GAx5QxybUGLZQD_V_UrfD1sCoKtH3o1j0NsbFOFc3WQxv6z38XF/exec'
@@ -56,6 +70,17 @@ export function readOwned(): string[] {
   }
 }
 
+/** Pertama kali jalan: anggap arsip lama di perangkat ini punya perangkat ini. */
+export function initOwnedWith(ids: string[]): string[] {
+  try {
+    if (localStorage.getItem(OWNED_KEY) !== null) return readOwned()
+    localStorage.setItem(OWNED_KEY, JSON.stringify(ids))
+    return ids
+  } catch {
+    return []
+  }
+}
+
 export function writeOwned(ids: string[]): void {
   try {
     localStorage.setItem(OWNED_KEY, JSON.stringify(ids))
@@ -99,12 +124,12 @@ export async function listEntries(url: string): Promise<Entry[]> {
 }
 
 export async function addEntryRemote(url: string, entry: Entry): Promise<Entry> {
-  const data = await post(url, { action: 'add', ...entry })
+  const data = await post(url, { action: 'add', ...entry, ownerToken: getOwnerToken() })
   return normalize(data.entry as Entry)
 }
 
 export async function deleteEntryRemote(url: string, id: string): Promise<void> {
-  await post(url, { action: 'delete', id })
+  await post(url, { action: 'delete', id, ownerToken: getOwnerToken() })
 }
 
 /**

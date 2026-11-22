@@ -749,6 +749,14 @@ textarea:focus-visible {
   color: var(--accent);
 }
 
+.drive-plus {
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
 .status-dot {
   width: 6px;
   height: 6px;

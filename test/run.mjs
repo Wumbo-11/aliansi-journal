@@ -94,6 +94,7 @@ const check = (name, ok, detail = '') => {
 }
 
 import { createRequire } from 'node:module'
+import { readFileSync } from 'node:fs'
 const require = createRequire(import.meta.url)
 const { mountDotField, mountApp } = require('./build/test/entry.js')
 
@@ -183,6 +184,19 @@ window.devicePixelRatio = 1
 const appRoot = mountApp(document.getElementById('app'))
 await sleep(100)
 
+// Animasi teks berada di judul form, bukan lagi di placeholder input
+const heading = () => document.querySelector('.rotating-heading-text')?.textContent ?? ''
+check('heading: animasi mengetik di "Sebuah cerita, sebuah hari"', await (async () => {
+  const start = Date.now()
+  while (Date.now() - start < 4000) {
+    if (heading().startsWith('Sebuah cerita, sebuah hari.') && heading().length > 4) return true
+    await sleep(60)
+  }
+  return false
+})(), `teks="${heading()}"`)
+check('heading: placeholder input tidak beranimasi lagi', document.querySelector('.input-placeholder') === null &&
+  document.querySelector('.title-input')?.getAttribute('placeholder') === 'Tulis judul di sini…')
+
 const titleText = () => document.querySelector('.title-mark-text')?.textContent ?? ''
 const waitFor = async (fn, timeout = 5000) => {
   const start = Date.now()
@@ -268,6 +282,13 @@ check('race: cerita baru tidak dihapus oleh list yang datang belakangan', titles
 const storedRace = JSON.parse(window.localStorage.getItem('aliansi-journal/v1') || '[]')
 check('race: keduanya tersimpan di lokal', storedRace.length === 2, `${storedRace.length} entri`)
 appRoot3.unmount()
+
+// ================= TES 4: CSS MODE DESKTOP-HP =================
+const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
+const coarse = css.slice(css.lastIndexOf('@media (any-pointer: coarse) and (min-width: 721px)'))
+check('css: ukuran teks besar di desktop mode terpasang',
+  coarse.includes('font-size: 44px !important') && coarse.includes('font-size: 34px') &&
+  coarse.includes('font-size: 54px') && coarse.includes('width: min(100% - 40px, 920px)'))
 
 // ================= HASIL =================
 const failed = results.filter((r) => !r.ok)

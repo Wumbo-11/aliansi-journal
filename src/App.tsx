@@ -23,25 +23,15 @@ import {
 
 const THEME_KEY = 'aliansi-theme'
 
-const TITLE_HINTS = [
+const HEADING_HINTS = [
+  'Sebuah cerita, sebuah hari.',
   'Ingin menulis apa?',
-  'Halo, ada yang ingin diceritakan?',
   'Ceritakan harimu di sini.',
   'Mulai dari satu kalimat saja.',
   'Apa yang sedang kamu pikirkan?',
   'Tulis apa adanya, tak perlu sempurna.',
-  'Ada kisah yang ingin disimpan?',
-  'Hari ini bagaimana kabarmu?',
   'Cerita kecil boleh jadi berarti.',
-  'Tulis dulu, nanti dirapikan juga boleh.',
-  'Di sini, kata-katamu aman.',
-  'Mau mulai dari mana?',
-  'Ceritakan saja, pelan-pelan.',
-  'Apa yang bikin kamu berhenti sejenak?',
-  'Cerita kamu, versi kamu.',
-  'Ada yang ingin kamu lepas hari ini?',
   'Kalimat pertama biasanya yang paling jujur.',
-  'Simpan hari ini, baca lagi nanti.',
 ]
 const dateFormat = new Intl.DateTimeFormat('id-ID', {
   day: 'numeric',
@@ -179,21 +169,47 @@ function Reveal({ children, className = '' }: { children: ReactNode; className?:
   )
 }
 
-function TitleHint() {
+/** Judul form yang mengetik berganti-ganti kalimat — sengaja di tempat terlihat. */
+function RotatingHeading() {
+  const reducedMotion = useReducedMotion()
   const [index, setIndex] = useState(0)
+  const [shown, setShown] = useState('')
 
   useEffect(() => {
-    const timer = window.setInterval(
-      () => setIndex((current) => (current + 1) % TITLE_HINTS.length),
-      4000,
-    )
+    const full = HEADING_HINTS[index]
+    if (reducedMotion) {
+      setShown(full)
+      return
+    }
+
+    let current = ''
+    let deleting = false
+    let hold = 0
+    const timer = window.setInterval(() => {
+      if (!deleting) {
+        current = full.slice(0, current.length + 1)
+        setShown(current)
+        if (current === full) deleting = true
+      } else if (hold < 20) {
+        hold += 1 // jeda sebentar sebelum mengetik ulang kalimat berikutnya
+      } else {
+        current = current.slice(0, -1)
+        setShown(current)
+        if (!current) {
+          window.clearInterval(timer)
+          setIndex((value) => (value + 1) % HEADING_HINTS.length)
+        }
+      }
+    }, 70)
+
     return () => window.clearInterval(timer)
-  }, [])
+  }, [index, reducedMotion])
 
   return (
-    <span key={index} className="input-placeholder">
-      {TITLE_HINTS[index]}
-    </span>
+    <>
+      <span className="rotating-heading-text">{shown || '\u00a0'}</span>
+      <span className="heading-caret" aria-hidden="true" />
+    </>
   )
 }
 
@@ -262,7 +278,7 @@ function Composer({ onAdd }: { onAdd: (entry: Entry) => void }) {
       <div className="section-heading">
         <div>
           <span className="eyebrow">Tulis</span>
-          <h2 id="composer-heading">Sebuah cerita, sebuah hari.</h2>
+          <h2 id="composer-heading"><RotatingHeading /></h2>
         </div>
         <p className="section-note">Nama boleh dikosongkan — cerita tetap berbicara.</p>
       </div>
@@ -274,12 +290,12 @@ function Composer({ onAdd }: { onAdd: (entry: Entry) => void }) {
             <input
               className="title-input"
               value={title}
+              placeholder="Tulis judul di sini…"
               onChange={(event) => {
                 setTitle(event.target.value)
                 setError('')
               }}
             />
-            {!title && <TitleHint />}
           </span>
         </label>
 

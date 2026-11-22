@@ -28,7 +28,7 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
     const dotRadius = compact ? 1.3 : 1.5
     const spacing = compact ? 16 : 14
     const cursorRadius = compact ? 240 : 350
-    const bulgeStrength = 62
+    const bulgeStrength = compact ? 62 : 82
 
     let dots: Dot[] = []
     let width = 0
@@ -39,7 +39,7 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
     let speed = 0
     let lastDraw = 0
     let idleFrames = 0
-    const pointer = { x: -9999, y: -9999, prevX: -9999, prevY: -9999 }
+    const pointer = { x: -9999, y: -9999, prevX: -9999, prevY: -9999, active: false }
 
     const build = () => {
       width = window.innerWidth
@@ -71,7 +71,7 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
       const dx = pointer.prevX - pointer.x
       const dy = pointer.prevY - pointer.y
       const distance = Math.sqrt(dx * dx + dy * dy)
-      speed += (distance - speed) * 0.5
+      speed += (distance - speed) * 0.4
       if (speed < 0.001) speed = 0
       pointer.prevX = pointer.x
       pointer.prevY = pointer.y
@@ -97,8 +97,10 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
       }
       ctx.fillStyle = gradient
 
-      const target = Math.min(speed / 5, 1)
-      intensity += (target - intensity) * 0.08
+      // Di desktop kursor hampir selalu ada: beri respon dasar langsung,
+      // kecepatan mouse cuma menambah kuatnya dorongan.
+      const target = pointer.active ? Math.min(1, 0.5 + speed / 3) : 0
+      intensity += (target - intensity) * 0.12
       if (intensity < 0.001) intensity = 0
 
       const radiusSquared = cursorRadius * cursorRadius
@@ -169,18 +171,21 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
     const onMouseMove = (event: MouseEvent) => {
       pointer.x = event.clientX
       pointer.y = event.clientY
+      pointer.active = true
       start()
     }
     const onTouch = (event: TouchEvent) => {
       if (event.touches.length > 0) {
         pointer.x = event.touches[0].clientX
         pointer.y = event.touches[0].clientY
+        pointer.active = true
         start()
       }
     }
     const onLeave = () => {
       pointer.x = -9999
       pointer.y = -9999
+      pointer.active = false
     }
     const onResize = () => {
       build()

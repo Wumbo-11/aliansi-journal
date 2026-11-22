@@ -13,6 +13,7 @@ import {
   setDriveUrl,
   updateEntryRemote,
   writeEntries,
+  uid,
   writeOwned,
 } from './drive'
 
@@ -114,29 +115,24 @@ function TitleMark() {
       setShown(target)
       return
     }
-    let cancelled = false
-    let timer = 0
-    let current = shownRef.current
 
-    const step = () => {
-      if (cancelled || current === target) return
-      if (target.startsWith(current)) {
-        current = target.slice(0, current.length + 1)
-        timer = window.setTimeout(step, 105)
-      } else {
-        current = current.slice(0, -1)
-        timer = window.setTimeout(step, 55)
+    // Pakai interval, bukan rantai setTimeout — lebih tahan terhadap
+    // StrictMode, throttle tab, dan re-render yang bisa menghentikan animasi.
+    let current = shownRef.current
+    const timer = window.setInterval(() => {
+      if (current === target) {
+        window.clearInterval(timer)
+        return
       }
+      current = target.startsWith(current)
+        ? target.slice(0, current.length + 1)
+        : current.slice(0, -1)
       shownRef.current = current
       setShown(current)
-    }
+    }, 85)
 
-    timer = window.setTimeout(step, collapsed ? 240 : 380)
-    return () => {
-      cancelled = true
-      window.clearTimeout(timer)
-    }
-  }, [target, collapsed, reducedMotion])
+    return () => window.clearInterval(timer)
+  }, [target, reducedMotion])
 
   return (
     <button
@@ -211,7 +207,7 @@ function Composer({ onAdd }: { onAdd: (entry: Entry) => void }) {
       return
     }
     onAdd({
-      id: crypto.randomUUID(),
+      id: uid(),
       title: title.trim(),
       body: body.trim(),
       author: author.trim(),
@@ -633,11 +629,19 @@ export default function App() {
         setSyncError('')
       })
       .catch((error: unknown) => {
+        // Gagal? Batalkan perubahan optimistik supaya tampilan cocok dengan Drive.
+        setEntries((current) => {
+          const next = current.filter((item) => item.id !== entry.id)
+          writeEntries(next)
+          return next
+        })
+        unmarkOwned(entry.id)
         setSyncError(`Gagal menyimpan ke Drive: ${error instanceof Error ? error.message : String(error)}`)
       })
   }
 
   const removeEntry = (id: string) => {
+    const removed = entries.find((entry) => entry.id === id)
     setEntries((current) => {
       const next = current.filter((entry) => entry.id !== id)
       writeEntries(next)
@@ -649,12 +653,21 @@ export default function App() {
     deleteEntryRemote(driveUrl, id)
       .then(() => setSyncError(''))
       .catch((error: unknown) => {
+        if (removed) {
+          setEntries((current) => {
+            const next = [removed, ...current]
+            writeEntries(next)
+            return next
+          })
+          markOwned(removed.id)
+        }
         setSyncError(`Gagal menghapus di Drive: ${error instanceof Error ? error.message : String(error)}`)
       })
   }
 
   const saveEdit = (next: Entry) => {
     const oldId = next.id
+    const previous = entries.find((entry) => entry.id === oldId)
 
     // Perubahan ditampilkan SEKETIKA, sinkron ke Drive jalan di belakang layar.
     setEntries((current) => {
@@ -678,6 +691,14 @@ export default function App() {
         setSyncError('')
       })
       .catch((error: unknown) => {
+        if (previous) {
+          setEntries((current) => {
+            const restored = current.map((entry) => (entry.id === oldId ? previous : entry))
+            writeEntries(restored)
+            return restored
+          })
+        }
+        setEditingId(oldId)
         setSyncError(`Gagal mengedit di Drive: ${error instanceof Error ? error.message : String(error)}`)
       })
   }

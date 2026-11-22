@@ -1,6 +1,14 @@
 import type { Entry } from './types'
 import { isEntry } from './types'
 
+/** Fallback karena crypto.randomUUID cuma ada di secure context (https/localhost). */
+export function uid(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+}
+
 export const DRIVE_URL_KEY = 'aliansi-journal/drive-url'
 export const LOCAL_KEY = 'aliansi-journal/v1'
 export const OWNED_KEY = 'aliansi-journal/owned'
@@ -11,11 +19,11 @@ function getOwnerToken(): string {
   try {
     const saved = localStorage.getItem(OWNER_TOKEN_KEY)
     if (saved) return saved
-    const token = crypto.randomUUID()
+    const token = uid()
     localStorage.setItem(OWNER_TOKEN_KEY, token)
     return token
   } catch {
-    return crypto.randomUUID()
+    return uid()
   }
 }
 
@@ -153,7 +161,7 @@ export async function deleteEntryRemote(url: string, id: string): Promise<void> 
 export async function updateEntryRemote(url: string, next: Entry): Promise<Entry> {
   // Kirim tambah & hapus bersamaan supaya nggak nunggu dua round-trip berurutan.
   const [saved] = await Promise.all([
-    addEntryRemote(url, { ...next, id: crypto.randomUUID() }),
+    addEntryRemote(url, { ...next, id: uid() }),
     deleteEntryRemote(url, next.id).catch(() => undefined),
   ])
   return saved

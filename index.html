@@ -17,23 +17,16 @@
       }
     </script>
     <script>
-      // Chrome Android "Desktop site": viewport layout jadi ~980px lalu dikecilin
-      // ke layar HP. Kembalikan ke ukuran asli dengan zoom terukur.
+      // Chrome Android "Desktop site" menyamarkan HP sebagai viewport lebar.
+      // Perangkat sentuh + viewport lebar adalah sinyal yang stabil untuk mode ini.
       (function () {
         var root = document.documentElement
         function detect() {
           var touch = navigator.maxTouchPoints > 0 || 'ontouchstart' in window
-          var screenW = (window.screen && window.screen.width) || 0
-          var vv = window.visualViewport
-          var vvW = vv && vv.width && vv.scale ? vv.width * vv.scale : 0
-          var deviceW = screenW && screenW <= 720 ? screenW : vvW || screenW
           var layoutW = window.innerWidth
-          if (touch && layoutW > 720 && deviceW && deviceW <= 720) {
+          if (touch && layoutW > 720) {
             root.dataset.desktopSite = 'true'
-            root.style.setProperty(
-              '--desktop-zoom',
-              String(Math.min(3.2, Math.max(1.5, layoutW / deviceW))),
-            )
+            root.style.setProperty('--desktop-zoom', '2.5')
           } else {
             delete root.dataset.desktopSite
             root.style.removeProperty('--desktop-zoom')

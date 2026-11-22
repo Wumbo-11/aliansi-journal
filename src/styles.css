@@ -177,48 +177,8 @@ textarea:focus-visible {
   padding: clamp(130px, 20vh, 190px) 0 clamp(48px, 8vh, 80px);
 }
 
-/* Pencahayaan real-time: layer bayangan & cahaya putih di atas teks.
-   Keduanya mengikuti --lamp-x/--lamp-y yang dihitung dari sudut kabel. */
-.hero-shadow,
-.hero-light {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.hero-shadow {
-  z-index: 2;
-  background: radial-gradient(
-    ellipse 230px 290px at var(--lamp-x, 50%) var(--lamp-y, 76px),
-    rgba(0, 0, 0, 0) 0%,
-    rgba(0, 0, 0, 0.16) 36%,
-    rgba(0, 0, 0, 0.66) 100%
-  );
-}
-
-.hero-light {
-  z-index: 3;
-  mix-blend-mode: screen;
-  background:
-    radial-gradient(ellipse 140px 200px at var(--lamp-x, 50%) calc(var(--lamp-y, 76px) + 84px),
-      rgba(255, 255, 255, 0.66), rgba(255, 255, 255, 0.22) 46%, transparent 78%),
-    radial-gradient(ellipse 250px 330px at var(--lamp-x, 50%) calc(var(--lamp-y, 76px) + 60px),
-      rgba(255, 250, 236, 0.24), transparent 80%);
-}
-
-:root[data-theme='light'] .hero-shadow {
-  background: radial-gradient(
-    ellipse 230px 290px at var(--lamp-x, 50%) var(--lamp-y, 76px),
-    rgba(60, 48, 30, 0) 0%,
-    rgba(60, 48, 30, 0.07) 40%,
-    rgba(40, 32, 22, 0.24) 100%
-  );
-}
-
-:root[data-theme='light'] .hero-light {
-  opacity: 0.7;
-}
-
+/* Kabel + kap lampu menggantung dari tengah atas. Satu sumber
+   (--lamp-x/--lamp-y) dipakai bola lampu dan sorotan teks. */
 .lamp-rig {
   position: absolute;
   z-index: 4;
@@ -249,7 +209,8 @@ textarea:focus-visible {
   touch-action: none;
 }
 
-.lamp-rig.is-dragging .lamp-head {
+.lamp-rig.is-dragging .lamp-head,
+.lamp-rig:active .lamp-head {
   cursor: grabbing;
 }
 
@@ -309,32 +270,60 @@ textarea:focus-visible {
   color: var(--accent);
 }
 
+/* Cahaya & bayangan LANGSUNG di huruf "Aliansi" (bukan background).
+   background-clip:text bikin gradient cuma ngisi glyph — jadi nggak ada
+   kotak hitam. Pusat terang = posisi bola lampu (--lamp-x), dengan
+   transisi terang→gelap di sepanjang huruf. */
 .title-mark {
-  display: inline-flex;
-  align-items: baseline;
+  display: flex;
   justify-content: center;
+  width: 100%;
   margin: 22px 0 0;
   padding: 0;
   border: 0;
   background: none;
-  color: var(--text);
   font-family: var(--serif);
   font-size: clamp(60px, 10vw, 104px);
   font-weight: 500;
   letter-spacing: -0.04em;
   line-height: 1;
-  text-shadow: 0 0 34px rgba(255, 255, 255, 0.12), 0 8px 30px rgba(0, 0, 0, 0.4);
-  transition: color 0.3s ease;
-}
-
-.title-mark:hover {
-  color: var(--accent);
+  transition: background 0.18s linear;
 }
 
 .title-mark-text {
-  display: inline-block;
-  min-width: 0.6em;
-  text-align: center;
+  /* --lamp-rel = posisi lampu (0–100%) relatif lebar span ini,
+     dihitung JS dari posisi bola lampu vs bounding box span.
+   Ellipse dibuat jauh lebih besar dari glyph supaya transisi
+   terang→gelap mulus (tidak ada batas putus/patah di tengah huruf). */
+  background-image: radial-gradient(
+    ellipse 85% 320% at var(--lamp-rel, 50%) 45%,
+    #ffffff 0%,
+    #fbf8f1 14%,
+    #d9d2c4 34%,
+    #8e8678 62%,
+    #4a463e 84%,
+    #2b2821 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  transition: background-image 0.08s linear;
+}
+
+:root[data-theme='light'] .title-mark-text {
+  background-image: radial-gradient(
+    ellipse 85% 320% at var(--lamp-rel, 50%) 45%,
+    #ffffff 0%,
+    #fff9e8 18%,
+    #e6d7b4 42%,
+    #b8a279 68%,
+    #8d7b58 100%
+  );
+}
+
+.title-mark:hover {
+  opacity: 0.85;
 }
 
 .title-caret {

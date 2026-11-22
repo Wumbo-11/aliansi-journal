@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 
 const CORD = 76
-const MAX_ANGLE = 0.66 // ~38° — batas ayunan mengikuti panjang kabel
+const MAX_ANGLE = 0.62 // ~35° — batas ayunan, tapi titik cahaya tetap terikat kabel
 
 /**
- * Lampu gantung pendulum: posisi vertical paten (panjang kabel tetap),
- * hanya bisa bergeser mengikuti busur kabel. Cahaya putih & bayangan
- * dihitung real-time dari sudut ayunan lewat CSS variable di hero.
+ * Lampu gantung pendulum. Posisi vertikal paten (panjang kabel tetap);
+ * lampu cuma bisa berayun mengikuti busur kabel. Satu sumber kebenaran
+ * (--lamp-x / --lamp-y) dipakai baik oleh bola lampu maupun oleh sorotan
+ * teks, jadi arah cahaya SELALU sama dengan arah lampu.
  */
 export default function HangingLamp() {
   const rigRef = useRef<HTMLDivElement>(null)
@@ -15,41 +16,63 @@ export default function HangingLamp() {
   const velocity = useRef(0)
   const dragging = useRef(false)
   const raf = useRef(0)
+  const lastTime = useRef(0)
   const [active, setActive] = useState(false)
+
+  const heroBox = () => {
+    const hero = rigRef.current?.parentElement
+    if (!hero) return { width: window.innerWidth, left: 0, zoom: 1, rect: { left: 0, width: window.innerWidth } }
+    const rect = hero.getBoundingClientRect()
+    const zoom = Number.parseFloat(window.getComputedStyle(hero).zoom) || 1
+    return { width: rect.width / zoom, left: rect.left / zoom, zoom, rect }
+  }
 
   const render = () => {
     const rig = rigRef.current
     const hero = rig?.parentElement
     if (!rig || !hero) return
-    rig.style.transform = `rotate(${angle.current}rad)`
-    const rect = hero.getBoundingClientRect()
-    const zoom = Number.parseFloat(window.getComputedStyle(hero).zoom) || 1
-    const anchorX = rect.width / zoom / 2
+    const { width, rect, zoom } = heroBox()
+    const anchorX = width / 2
+    // CSS rotate(+θ) memutar ke KIRI (sumbu Y ke bawah). Negatifkan supaya
+    // bola lampu & sorotan bergerak ke arah yang sama dengan gerakan jari.
+    rig.style.transform = `rotate(${-angle.current}rad)`
     const bx = anchorX + Math.sin(angle.current) * CORD
-    const by = Math.cos(angle.current) * CORD
+    const by = CORD * Math.cos(angle.current)
     hero.style.setProperty('--lamp-x', `${bx}px`)
     hero.style.setProperty('--lamp-y', `${by}px`)
+    // Posisi sorotan relatif terhadap lebar span teks "Aliansi".
+    // Bola lampu (bx) diukur dari tepi kiri hero; span bisa lebih sempit
+    // dan terpusat, jadi kita konversi ke persentase span.
+    const text = hero.querySelector('.title-mark-text')
+    if (text) {
+      const tr = text.getBoundingClientRect()
+      const textLeft = (tr.left - rect.left) / zoom
+      const textWidth = tr.width / zoom || 1
+      const rel = ((bx - textLeft) / textWidth) * 100
+      hero.style.setProperty('--lamp-rel', `${rel}%`)
+    }
     rig.style.setProperty('--cord-length', `${CORD}px`)
   }
 
   const aimAt = (clientX: number) => {
-    const hero = rigRef.current?.parentElement
-    if (!hero) return
-    const rect = hero.getBoundingClientRect()
-    const zoom = Number.parseFloat(window.getComputedStyle(hero).zoom) || 1
-    const anchorX = rect.width / zoom / 2
-    const dx = (clientX - rect.left) / zoom - anchorX
-    const ratio = Math.max(-Math.sin(MAX_ANGLE), Math.min(Math.sin(MAX_ANGLE), dx / CORD))
-    angle.current = Math.asin(ratio)
+    const { width, left, zoom } = heroBox()
+    const anchorX = width / 2
+    const dx = (clientX - left) / zoom - anchorX
+    const maxDx = Math.sin(MAX_ANGLE) * CORD
+    const ratio = Math.max(-maxDx, Math.min(maxDx, dx))
+    angle.current = Math.asin(ratio / CORD)
     render()
   }
 
   const swingBack = () => {
     cancelAnimationFrame(raf.current)
-    const step = () => {
-      velocity.current += -angle.current * 0.06
-      velocity.current *= 0.93
-      angle.current += velocity.current
+    lastTime.current = 0
+    const step = (now: number) => {
+      const dt = lastTime.current ? Math.min(2, (now - lastTime.current) / 16.67) : 1
+      lastTime.current = now
+      velocity.current += (-angle.current * 0.075) * dt
+      velocity.current *= Math.pow(0.9, dt)
+      angle.current += velocity.current * dt
       render()
       if (Math.abs(angle.current) > 0.0015 || Math.abs(velocity.current) > 0.0015) {
         raf.current = requestAnimationFrame(step)
@@ -64,7 +87,12 @@ export default function HangingLamp() {
 
   useEffect(() => {
     render()
-    return () => cancelAnimationFrame(raf.current)
+    const onResize = () => render()
+    window.addEventListener('resize', onResize)
+    return () => {
+      cancelAnimationFrame(raf.current)
+      window.removeEventListener('resize', onResize)
+    }
   }, [])
 
   useEffect(() => {
@@ -108,9 +136,6 @@ export default function HangingLamp() {
       const dir = event.key === 'ArrowLeft' ? -1 : 1
       angle.current = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, angle.current + step * dir))
       render()
-    } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-      // Kabel paten — naik/turun tidak mengubah posisi, tetap di busur.
-      return
     } else {
       return
     }

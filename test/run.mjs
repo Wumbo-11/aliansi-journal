@@ -27,6 +27,7 @@ define('Element', window.Element)
 define('Node', window.Node)
 define('MouseEvent', window.MouseEvent)
 define('Event', window.Event)
+define('getComputedStyle', window.getComputedStyle.bind(window))
 define('localStorage', window.localStorage)
 define('requestAnimationFrame', window.requestAnimationFrame.bind(window))
 define('cancelAnimationFrame', window.cancelAnimationFrame.bind(window))
@@ -204,18 +205,47 @@ check('heading: tanpa caret & tanpa catatan nama', document.querySelector('.head
 const lamp = document.querySelector('.lamp-rig')
 check('lampu: terpasang di hero', !!lamp)
 if (lamp) {
-  lamp.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, clientX: 120, clientY: 120 }))
+  const hero = lamp.parentElement
+  // jsdom: getBoundingClientRect() = 0 → anchor lampu di x=0.
+  // "Kanan" = clientX positif, "kiri" = clientX negatif (relative ke anchor).
+  const anchorX = 0
+  const lampX = () => Number.parseFloat(hero?.style.getPropertyValue('--lamp-x') || 'NaN')
+  const rotation = () => {
+    const m = /rotate\(([-0-9.]+)rad\)/.exec(lamp.style.transform || '')
+    return m ? Number.parseFloat(m[1]) : 0
+  }
+
+  lamp.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, clientX: anchorX, clientY: 120 }))
   await sleep(40)
   check('lampu: jadi aktif saat disentuh', lamp.classList.contains('is-dragging'))
-  window.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: 260, clientY: 160 }))
+
+  // Geser KE KANAN: titik cahaya harus positif (ke kanan dari anchor).
+  window.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: anchorX + 200, clientY: 140 }))
   await sleep(40)
-  check('lampu: cahaya ikut diatur (CSS var terisi)',
-    !!lamp.parentElement?.style.getPropertyValue('--lamp-x') &&
-    !!lamp.parentElement?.style.getPropertyValue('--lamp-y'))
-  const lampX = Number.parseFloat(lamp.parentElement?.style.getPropertyValue('--lamp-x') || '999')
-  check('lampu: geseran dibatasi panjang kabel', lampX <= 50 && lampX >= -50, `x=${lampX}`)
-  check('lampu: ada layer sorotan & bayangan real-time',
-    !!document.querySelector('.hero-light') && !!document.querySelector('.hero-shadow'))
+  check('lampu: cahaya ikut diatur (CSS var terisi)', !Number.isNaN(lampX()))
+  check('lampu: geser kanan -> sorotan ke kanan (searah jari)', lampX() > anchorX, `x=${lampX().toFixed(1)}`)
+  check('lampu: rotasi CSS searah (negatif = kanan)', rotation() < 0, `rot=${rotation().toFixed(3)}`)
+  const maxReach = 76 * Math.sin(0.62) + 1
+  check('lampu: geseran dibatasi busur kabel', lampX() - anchorX <= maxReach, `x=${lampX().toFixed(1)} max=${maxReach.toFixed(1)}`)
+
+  // Geser KE KIRI: sorotan harus negatif (ke kiri juga).
+  window.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: anchorX - 200, clientY: 140 }))
+  await sleep(40)
+  check('lampu: geser kiri -> sorotan ke kiri (searah jari)', lampX() < anchorX, `x=${lampX().toFixed(1)}`)
+  check('lampu: rotasi kiri = positif', rotation() > 0, `rot=${rotation().toFixed(3)}`)
+
+  // jsdom tidak memuat CSS hasil bundling Vite, jadi baca sumber CSS langsung.
+  const cssSource = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
+  check('lampu: sorotan & bayangan ada di huruf Aliansi (background-clip:text)',
+    /\.title-mark-text\s*\{[^}]*background-clip:\s*text/s.test(cssSource) &&
+    /\.title-mark-text\s*\{[^}]*radial-gradient/s.test(cssSource))
+  check('lampu: gradasi halus (>4 stop warna, tidak patah)',
+    (cssSource.match(/#ffffff 0%,[\s\S]{0,220}?#2b2821 100%/) || []).length > 0)
+  check('lampu: teks pakai posisi sorotan relatif (--lamp-rel)',
+    cssSource.includes('var(--lamp-rel'))
+  check('lampu: tidak ada layer cahaya background yang menutupi hero',
+    document.querySelector('.hero-light') === null && document.querySelector('.hero-shadow') === null)
+
   window.dispatchEvent(new window.MouseEvent('pointerup', { bubbles: true }))
   await sleep(40)
   check('lampu: berhenti aktif setelah dilepas', !lamp.classList.contains('is-dragging'))

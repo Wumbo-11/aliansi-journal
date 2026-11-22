@@ -146,7 +146,6 @@ function TitleMark() {
       title="Klik untuk mengubah judul"
     >
       <span className="title-mark-text">{shown || '\u00a0'}</span>
-      <span className="title-caret" aria-hidden="true" />
     </button>
   )
 }
@@ -931,8 +930,6 @@ export default function App() {
       <main>
         {showWelcome && (
           <section className="hero page-view">
-            <div className="hero-shadow" aria-hidden="true" />
-            <div className="hero-light" aria-hidden="true" />
             <HangingLamp />
             <span className="eyebrow">Aliansi · sejak hari ini</span>
             <TitleMark />

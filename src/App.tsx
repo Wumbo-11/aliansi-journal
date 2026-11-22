@@ -5,13 +5,16 @@ import { CATEGORIES } from './types'
 import type { Category, Entry } from './types'
 import {
   addEntryRemote,
+  clearDraft,
   deleteEntryRemote,
   getDriveUrl,
   initOwnedWith,
   listEntries,
+  readDraft,
   readEntries,
   setDriveUrl,
   updateEntryRemote,
+  writeDraft,
   writeEntries,
   uid,
   writeOwned,
@@ -194,11 +197,17 @@ function TitleHint() {
 }
 
 function Composer({ onAdd }: { onAdd: (entry: Entry) => void }) {
-  const [title, setTitle] = useState('')
-  const [author, setAuthor] = useState('')
-  const [body, setBody] = useState('')
-  const [category, setCategory] = useState<Category>('Cerita')
+  const [saved] = useState(readDraft)
+  const [title, setTitle] = useState(saved.title)
+  const [author, setAuthor] = useState(saved.author)
+  const [body, setBody] = useState(saved.body)
+  const [category, setCategory] = useState<Category>(saved.category)
   const [error, setError] = useState('')
+
+  // Simpan draf otomatis tiap kali mengetik — aman kalau web ditutup.
+  useEffect(() => {
+    writeDraft({ title, author, body, category })
+  }, [title, author, body, category])
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
@@ -214,6 +223,7 @@ function Composer({ onAdd }: { onAdd: (entry: Entry) => void }) {
       category,
       createdAt: Date.now(),
     })
+    clearDraft()
     setTitle('')
     setAuthor('')
     setBody('')
@@ -309,11 +319,22 @@ function EditForm({
   onSave: (next: Entry) => void
   onCancel: () => void
 }) {
-  const [title, setTitle] = useState(entry.title)
-  const [author, setAuthor] = useState(entry.author)
-  const [body, setBody] = useState(entry.body)
-  const [category, setCategory] = useState<Category>(entry.category)
+  const draftKey = `aliansi-journal/draft/${entry.id}`
+  const [saved] = useState(() => {
+    const draft = readDraft(draftKey)
+    return draft.title || draft.body
+      ? draft
+      : { title: entry.title, author: entry.author, body: entry.body, category: entry.category }
+  })
+  const [title, setTitle] = useState(saved.title)
+  const [author, setAuthor] = useState(saved.author)
+  const [body, setBody] = useState(saved.body)
+  const [category, setCategory] = useState<Category>(saved.category)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    writeDraft({ title, author, body, category }, draftKey)
+  }, [title, author, body, category, draftKey])
 
   const save = (event: FormEvent) => {
     event.preventDefault()
@@ -321,6 +342,7 @@ function EditForm({
       setError('Judul dan isi cerita wajib diisi.')
       return
     }
+    clearDraft(draftKey)
     onSave({ ...entry, title: title.trim(), author: author.trim(), body: body.trim(), category })
   }
 
@@ -357,7 +379,16 @@ function EditForm({
         <textarea value={body} onChange={(event) => setBody(event.target.value)} rows={5} />
       </label>
       <div className="form-footer">
-        <button type="button" className="ghost-button" onClick={onCancel}>Batal</button>
+        <button
+          type="button"
+          className="ghost-button"
+          onClick={() => {
+            clearDraft(draftKey)
+            onCancel()
+          }}
+        >
+          Batal
+        </button>
         <button type="submit" className="primary-button">Simpan perubahan</button>
       </div>
       <p className={`form-error${error ? ' is-visible' : ''}`} role="alert">{error || '\u00a0'}</p>

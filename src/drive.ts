@@ -1,5 +1,45 @@
-import type { Entry } from './types'
-import { isEntry } from './types'
+import type { Category, Entry } from './types'
+import { CATEGORIES, isEntry } from './types'
+
+export type Draft = { title: string; author: string; body: string; category: Category }
+
+const DRAFT_KEY = 'aliansi-journal/draft'
+
+export function readDraft(key: string = DRAFT_KEY): Draft {
+  const empty: Draft = { title: '', author: '', body: '', category: 'Cerita' }
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return empty
+    const parsed = JSON.parse(raw) as Partial<Draft>
+    return {
+      title: typeof parsed.title === 'string' ? parsed.title : '',
+      author: typeof parsed.author === 'string' ? parsed.author : '',
+      body: typeof parsed.body === 'string' ? parsed.body : '',
+      category: CATEGORIES.includes(parsed.category as Category)
+        ? (parsed.category as Category)
+        : 'Cerita',
+    }
+  } catch {
+    return empty
+  }
+}
+
+export function writeDraft(draft: Draft, key: string = DRAFT_KEY): void {
+  try {
+    if (!draft.title && !draft.author && !draft.body) localStorage.removeItem(key)
+    else localStorage.setItem(key, JSON.stringify(draft))
+  } catch {
+    // Abaikan kalau storage penuh/diblokir.
+  }
+}
+
+export function clearDraft(key: string = DRAFT_KEY): void {
+  try {
+    localStorage.removeItem(key)
+  } catch {
+    // Abaikan.
+  }
+}
 
 /** Fallback karena crypto.randomUUID cuma ada di secure context (https/localhost). */
 export function uid(): string {

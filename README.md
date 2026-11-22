@@ -32,7 +32,8 @@ pnpm preview    # test hasil build
 ```
 
 ## Akses
-- **GitHub Pages (permanen):** `https://wumbo-11.github.io/aliansi-journal/`
+- **Cloudflare Pages (utama):** `https://aliansi-story.pages.dev/` — deploy via direct upload (`aliansi-story.zip`).
+- GitHub Pages (cadangan): `https://wumbo-11.github.io/aliansi-journal/`
 - Repo: `https://github.com/Wumbo-11/aliansi-journal`
 - Setiap push ke `main` otomatis build & deploy lewat `.github/workflows/deploy.yml`.
 

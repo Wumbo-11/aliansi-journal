@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { FormEvent, TouchEvent } from 'react'
+import type { FormEvent, ReactNode, TouchEvent } from 'react'
+import DotField from './DotField'
 import { CATEGORIES } from './types'
 import type { Category, Entry } from './types'
 import {
@@ -148,6 +149,33 @@ function TitleMark() {
       <span className="title-mark-text">{shown || '\u00a0'}</span>
       <span className="title-caret" aria-hidden="true" />
     </button>
+  )
+}
+
+function Reveal({ children, className = '' }: { children: ReactNode; className?: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    const element = ref.current
+    if (!element) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true)
+          observer.disconnect()
+        }
+      },
+      { threshold: 0.08 },
+    )
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+
+  return (
+    <div ref={ref} className={`reveal${visible ? ' is-visible' : ''} ${className}`}>
+      {children}
+    </div>
   )
 }
 
@@ -687,6 +715,7 @@ export default function App() {
 
   return (
     <div className="site" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+      <DotField theme={theme} />
       <header className="topbar">
         <span className="topbar-brand">RUANG CERITA</span>
         <button
@@ -732,7 +761,8 @@ export default function App() {
 
         {showHome && <Composer onAdd={addEntry} />}
 
-        {showArchive && (
+        <Reveal>
+          {showArchive && (
           <section className="archive page-view" aria-labelledby="archive-heading">
             <div className="archive-heading">
               <div>
@@ -787,12 +817,16 @@ export default function App() {
               </div>
             )}
           </section>
-        )}
+          )}
+        </Reveal>
       </main>
 
       <footer className="footer">
         <span className="footer-mark">A</span>
         <p>Aliansi — ruang untuk cerita yang dibagi.</p>
+        <Reveal>
+          <div className="footer-wordmark" aria-hidden="true">ALIANSI</div>
+        </Reveal>
       </footer>
 
       {isMobile && (

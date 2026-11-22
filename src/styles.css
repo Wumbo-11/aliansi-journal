@@ -80,8 +80,28 @@ textarea:focus-visible {
 }
 
 .site {
+  position: relative;
+  z-index: 1;
   width: min(100% - 40px, 1120px);
   margin: 0 auto;
+}
+
+.dot-field {
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 0.75s ease, transform 0.75s ease;
+}
+
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
 }
 
 /* ── Top bar ─────────────────────────────────────────── */
@@ -728,6 +748,23 @@ textarea:focus-visible {
   text-transform: uppercase;
 }
 
+.footer-wordmark {
+  overflow: hidden;
+  margin-top: 30px;
+  color: var(--accent);
+  font-family: var(--serif);
+  font-size: clamp(64px, 19vw, 240px);
+  font-weight: 500;
+  letter-spacing: -0.055em;
+  line-height: 0.86;
+  opacity: 0.17;
+  text-align: center;
+  user-select: none;
+  white-space: nowrap;
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent);
+  mask-image: linear-gradient(to bottom, #000 55%, transparent);
+}
+
 /* ── Drive status & modal ────────────────────────────── */
 .drive-button {
   grid-column: 2;
@@ -1128,6 +1165,11 @@ textarea:focus-visible {
   .input-placeholder {
     animation: none !important;
     opacity: 1;
+  }
+
+  .reveal {
+    opacity: 1;
+    transform: none;
   }
 
   *,

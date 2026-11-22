@@ -1,10 +1,16 @@
 import { useEffect, useRef } from 'react'
 
-type Dot = { bx: number; by: number; ox: number; oy: number; seed: number }
+type Dot = {
+  ax: number
+  ay: number
+  sx: number
+  sy: number
+}
 
 /**
- * Lapisan latar berupa titik-titik halus yang menjauh dari kursor,
- * plus cahaya lembut mengikuti pointer. Ringan, tanpa dependensi.
+ * Dot field interaktif: titik rapat yang menjauh dari kursor/jari.
+ * Mengikuti pola DotField pada gestalt: kecepatan pointer menggerakkan
+ * dot, lalu pelan-pelan kembali ke posisi semula.
  */
 export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -12,23 +18,27 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    const ctx = canvas.getContext('2d')
+    const ctx = canvas.getContext('2d', { alpha: true })
     if (!ctx) return
 
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    const touch = window.matchMedia('(hover: none)').matches
+    const compact = window.matchMedia('(max-width: 720px)').matches
 
-    const spacing = 30
-    const baseRadius = 1.1
-    const influence = 155
-    const push = 26
+    // Rapet seperti referensi; sedikit lebih longgar di HP biar ringan.
+    const dotRadius = compact ? 1.3 : 1.5
+    const spacing = compact ? 16 : 14
+    const cursorRadius = compact ? 240 : 350
+    const bulgeStrength = 62
 
     let dots: Dot[] = []
     let width = 0
     let height = 0
     let raf = 0
     let running = true
-    const pointer = { x: -9999, y: -9999, active: false }
+    let tick = 0
+    let intensity = 0
+    let speed = 0
+    const pointer = { x: -9999, y: -9999, prevX: -9999, prevY: -9999 }
 
     const build = () => {
       width = window.innerWidth
@@ -40,91 +50,101 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
       canvas.style.height = `${height}px`
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
 
+      const step = dotRadius + spacing
+      const cols = Math.floor(width / step)
+      const rows = Math.floor(height / step)
+      const startX = (width % step) / 2 + step / 2
+      const startY = (height % step) / 2 + step / 2
+
       dots = []
-      const cols = Math.ceil(width / spacing) + 1
-      const rows = Math.ceil(height / spacing) + 1
       for (let row = 0; row < rows; row += 1) {
         for (let col = 0; col < cols; col += 1) {
-          dots.push({
-            bx: col * spacing + spacing / 2,
-            by: row * spacing + spacing / 2,
-            ox: 0,
-            oy: 0,
-            seed: col * 13 + row * 7,
-          })
+          const x = startX + col * step
+          const y = startY + row * step
+          dots.push({ ax: x, ay: y, sx: x, sy: y })
         }
       }
     }
 
-    const draw = (time: number) => {
+    const trackSpeed = () => {
+      const dx = pointer.prevX - pointer.x
+      const dy = pointer.prevY - pointer.y
+      const distance = Math.sqrt(dx * dx + dy * dy)
+      speed += (distance - speed) * 0.5
+      if (speed < 0.001) speed = 0
+      pointer.prevX = pointer.x
+      pointer.prevY = pointer.y
+    }
+    const speedTimer = window.setInterval(trackSpeed, 20)
+
+    const draw = () => {
       ctx.clearRect(0, 0, width, height)
+      tick += 1
 
       const dark = theme === 'dark'
-      const dotRGB = dark ? '243,239,231' : '27,25,22'
-      const accentRGB = dark ? '201,168,106' : '154,123,63'
-      const baseAlpha = dark ? 0.15 : 0.12
-
-      if (pointer.active && !reduced && !touch) {
-        const glow = ctx.createRadialGradient(pointer.x, pointer.y, 0, pointer.x, pointer.y, 230)
-        glow.addColorStop(0, `rgba(${accentRGB},0.075)`)
-        glow.addColorStop(1, `rgba(${accentRGB},0)`)
-        ctx.fillStyle = glow
-        ctx.fillRect(pointer.x - 230, pointer.y - 230, 460, 460)
+      const gradient = ctx.createLinearGradient(0, 0, width, height)
+      if (dark) {
+        gradient.addColorStop(0, 'rgba(243,239,231,0.85)')
+        gradient.addColorStop(1, 'rgba(201,168,106,0.42)')
+      } else {
+        gradient.addColorStop(0, 'rgba(27,25,22,0.55)')
+        gradient.addColorStop(1, 'rgba(154,123,63,0.38)')
       }
+      ctx.fillStyle = gradient
 
+      const target = Math.min(speed / 5, 1)
+      intensity += (target - intensity) * 0.08
+      if (intensity < 0.001) intensity = 0
+
+      const radiusSquared = cursorRadius * cursorRadius
+      const active = intensity > 0.01 && !reduced
+
+      ctx.beginPath()
       for (const dot of dots) {
-        let targetX = 0
-        let targetY = 0
-        let energy = 0
+        const dx = pointer.x - dot.ax
+        const dy = pointer.y - dot.ay
+        const distanceSquared = dx * dx + dy * dy
 
-        if (!reduced && !touch && pointer.active) {
-          const dx = dot.bx - pointer.x
-          const dy = dot.by - pointer.y
-          const distance = Math.hypot(dx, dy)
-          if (distance < influence && distance > 0.001) {
-            const strength = 1 - distance / influence
-            energy = strength * strength
-            targetX = (dx / distance) * push * strength
-            targetY = (dy / distance) * push * strength
-          }
+        if (active && distanceSquared < radiusSquared) {
+          const distance = Math.sqrt(distanceSquared) || 0.001
+          const close = 1 - distance / cursorRadius
+          const push = close * close * bulgeStrength * intensity
+          const angle = Math.atan2(dy, dx)
+          dot.sx += (dot.ax - Math.cos(angle) * push - dot.sx) * 0.16
+          dot.sy += (dot.ay - Math.sin(angle) * push - dot.sy) * 0.16
+        } else {
+          dot.sx += (dot.ax - dot.sx) * 0.1
+          dot.sy += (dot.ay - dot.sy) * 0.1
         }
 
-        if (!reduced) {
-          targetX += Math.sin(time * 0.0004 + dot.seed) * 1.2
-          targetY += Math.cos(time * 0.00035 + dot.seed) * 1.2
-        }
-
-        const easing = reduced ? 1 : 0.12
-        dot.ox += (targetX - dot.ox) * easing
-        dot.oy += (targetY - dot.oy) * easing
-
-        const alpha = Math.min(0.85, baseAlpha + energy * 0.5)
-        ctx.beginPath()
-        ctx.arc(dot.bx + dot.ox, dot.by + dot.oy, baseRadius + energy * 1.4, 0, Math.PI * 2)
-        ctx.fillStyle = energy > 0.15
-          ? `rgba(${accentRGB},${alpha})`
-          : `rgba(${dotRGB},${alpha})`
-        ctx.fill()
+        ctx.moveTo(dot.sx + dotRadius, dot.sy)
+        ctx.arc(dot.sx, dot.sy, dotRadius, 0, Math.PI * 2)
       }
+      ctx.fill()
     }
 
-    const loop = (time: number) => {
-      draw(time)
+    const loop = () => {
+      draw()
       raf = requestAnimationFrame(loop)
     }
 
-    const onResize = () => {
-      build()
-      if (reduced) draw(0)
-    }
-    const onPointerMove = (event: PointerEvent) => {
-      if (touch) return
+    const onMouseMove = (event: MouseEvent) => {
       pointer.x = event.clientX
       pointer.y = event.clientY
-      pointer.active = true
     }
-    const onPointerLeave = () => {
-      pointer.active = false
+    const onTouch = (event: TouchEvent) => {
+      if (event.touches.length > 0) {
+        pointer.x = event.touches[0].clientX
+        pointer.y = event.touches[0].clientY
+      }
+    }
+    const onLeave = () => {
+      pointer.x = -9999
+      pointer.y = -9999
+    }
+    const onResize = () => {
+      build()
+      if (reduced) draw()
     }
     const onVisibility = () => {
       if (document.hidden) {
@@ -137,20 +157,31 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
     }
 
     build()
-    if (reduced) draw(0)
-    else raf = requestAnimationFrame(loop)
-
+    if (reduced) {
+      draw()
+    } else {
+      raf = requestAnimationFrame(loop)
+      window.addEventListener('mousemove', onMouseMove, { passive: true })
+      window.addEventListener('touchstart', onTouch, { passive: true })
+      window.addEventListener('touchmove', onTouch, { passive: true })
+      window.addEventListener('touchend', onLeave, { passive: true })
+      window.addEventListener('touchcancel', onLeave, { passive: true })
+      document.addEventListener('mouseleave', onLeave)
+    }
     window.addEventListener('resize', onResize)
-    window.addEventListener('pointermove', onPointerMove, { passive: true })
-    document.addEventListener('pointerleave', onPointerLeave)
     document.addEventListener('visibilitychange', onVisibility)
 
     return () => {
+      window.clearInterval(speedTimer)
       cancelAnimationFrame(raf)
       window.removeEventListener('resize', onResize)
-      window.removeEventListener('pointermove', onPointerMove)
-      document.removeEventListener('pointerleave', onPointerLeave)
       document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('touchstart', onTouch)
+      window.removeEventListener('touchmove', onTouch)
+      window.removeEventListener('touchend', onLeave)
+      window.removeEventListener('touchcancel', onLeave)
+      document.removeEventListener('mouseleave', onLeave)
     }
   }, [theme])
 

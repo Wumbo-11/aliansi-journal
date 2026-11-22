@@ -37,6 +37,8 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
     let running = true
     let intensity = 0
     let speed = 0
+    let lastDraw = 0
+    let idleFrames = 0
     const pointer = { x: -9999, y: -9999, prevX: -9999, prevY: -9999 }
 
     const build = () => {
@@ -82,6 +84,7 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
 
     const draw = () => {
       ctx.clearRect(0, 0, width, height)
+      let motion = intensity > 0.001
 
       const dark = theme === 'dark'
       const gradient = ctx.createLinearGradient(0, 0, width, height)
@@ -121,6 +124,10 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
           dot.sy += (dot.ay - dot.sy) * 0.1
         }
 
+        if (Math.abs(dot.sx - dot.ax) > 0.15 || Math.abs(dot.sy - dot.ay) > 0.15) {
+          motion = true
+        }
+
         const level = Math.min(BUCKETS - 1, Math.floor(glow * BUCKETS))
         const path = paths[level]
         path.moveTo(dot.sx + dotRadius, dot.sy)
@@ -132,21 +139,43 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
         ctx.fill(paths[level])
       }
       ctx.globalAlpha = 1
+      return motion
     }
 
-    const loop = () => {
-      draw()
+    const start = () => {
+      if (reduced || running) return
+      running = true
+      idleFrames = 0
+      raf = requestAnimationFrame(loop)
+    }
+
+    const loop = (time: number) => {
+      // Di HP cukup ~30 fps supaya ringan.
+      if (compact && time - lastDraw < 30) {
+        raf = requestAnimationFrame(loop)
+        return
+      }
+      lastDraw = time
+      const motion = draw()
+      idleFrames = motion ? 0 : idleFrames + 1
+      if (idleFrames > 20) {
+        running = false
+        raf = 0
+        return
+      }
       raf = requestAnimationFrame(loop)
     }
 
     const onMouseMove = (event: MouseEvent) => {
       pointer.x = event.clientX
       pointer.y = event.clientY
+      start()
     }
     const onTouch = (event: TouchEvent) => {
       if (event.touches.length > 0) {
         pointer.x = event.touches[0].clientX
         pointer.y = event.touches[0].clientY
+        start()
       }
     }
     const onLeave = () => {
@@ -161,9 +190,8 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
       if (document.hidden) {
         running = false
         cancelAnimationFrame(raf)
-      } else if (!reduced && !running) {
-        running = true
-        raf = requestAnimationFrame(loop)
+      } else if (!reduced) {
+        start()
       }
     }
 

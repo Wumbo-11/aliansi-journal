@@ -585,11 +585,6 @@ export default function App() {
     }
   }, [driveUrl])
 
-  const commit = (next: Entry[]) => {
-    setEntries(next)
-    writeEntries(next)
-  }
-
   const markOwned = (id: string) => {
     setOwned((current) => {
       const next = current.includes(id) ? current : [...current, id]
@@ -607,14 +602,23 @@ export default function App() {
   }
 
   const addEntry = (entry: Entry) => {
-    if (!driveUrl) {
-      commit([entry, ...entries])
-      markOwned(entry.id)
-      return
-    }
+    // Tampilkan dulu, sinkron belakangan supaya terasa instan.
+    setEntries((current) => {
+      const next = [entry, ...current]
+      writeEntries(next)
+      return next
+    })
+    markOwned(entry.id)
+    if (!driveUrl) return
+
     addEntryRemote(driveUrl, entry)
       .then((saved) => {
-        commit([saved, ...entries])
+        setEntries((current) => {
+          const next = current.map((item) => (item.id === entry.id ? saved : item))
+          writeEntries(next)
+          return next
+        })
+        unmarkOwned(entry.id)
         markOwned(saved.id)
         setSyncError('')
       })
@@ -624,17 +628,16 @@ export default function App() {
   }
 
   const removeEntry = (id: string) => {
-    if (!driveUrl) {
-      commit(entries.filter((entry) => entry.id !== id))
-      unmarkOwned(id)
-      return
-    }
+    setEntries((current) => {
+      const next = current.filter((entry) => entry.id !== id)
+      writeEntries(next)
+      return next
+    })
+    unmarkOwned(id)
+    if (!driveUrl) return
+
     deleteEntryRemote(driveUrl, id)
-      .then(() => {
-        commit(entries.filter((entry) => entry.id !== id))
-        unmarkOwned(id)
-        setSyncError('')
-      })
+      .then(() => setSyncError(''))
       .catch((error: unknown) => {
         setSyncError(`Gagal menghapus di Drive: ${error instanceof Error ? error.message : String(error)}`)
       })

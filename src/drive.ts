@@ -114,13 +114,27 @@ async function post(url: string, payload: Record<string, unknown>): Promise<Reco
   return data
 }
 
-export async function listEntries(url: string): Promise<Entry[]> {
+// Hindari request ganda (StrictMode/reload cepat) & pakai hasil sebentar.
+const listCache = new Map<string, { promise: Promise<Entry[]>; at: number }>()
+
+export function listEntries(url: string): Promise<Entry[]> {
+  const cached = listCache.get(url)
+  if (cached && Date.now() - cached.at < 4000) return cached.promise
+
   const target = url.includes('?') ? `${url}&action=list` : `${url}?action=list`
-  const response = await fetch(target, { method: 'GET', redirect: 'follow' })
-  if (!response.ok) throw new Error(`HTTP ${response.status}`)
-  const data: Record<string, unknown> = await response.json()
-  if (!data.ok) throw new Error(String(data.error || 'Gagal membaca Google Drive'))
-  return Array.isArray(data.entries) ? data.entries.filter(isEntry).map(normalize) : []
+  const promise = (async () => {
+    const response = await fetch(target, { method: 'GET', redirect: 'follow' })
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    const data: Record<string, unknown> = await response.json()
+    if (!data.ok) throw new Error(String(data.error || 'Gagal membaca Google Drive'))
+    return Array.isArray(data.entries) ? data.entries.filter(isEntry).map(normalize) : []
+  })().catch((error: unknown) => {
+    listCache.delete(url)
+    throw error
+  })
+
+  listCache.set(url, { promise, at: Date.now() })
+  return promise
 }
 
 export async function addEntryRemote(url: string, entry: Entry): Promise<Entry> {

@@ -32,8 +32,12 @@ pnpm preview    # test hasil build
 ```
 
 ## Akses
-- LAN: `http://192.168.43.37:4174`
-- HTTPS (quick tunnel, sementara): `https://begun-bbs-data-rates.trycloudflare.com`
+- **GitHub Pages (permanen):** `https://wumbo-11.github.io/aliansi-journal/`
+- Repo: `https://github.com/Wumbo-11/aliansi-journal`
+- Setiap push ke `main` otomatis build & deploy lewat `.github/workflows/deploy.yml`.
+
+> Setelah deploy ke GitHub Pages, tunnel cloudflared & server preview di HP **tidak diperlukan lagi**.
+> Backend Apps Script tetap jalan di server Google, jadi web tetap bisa dipakai walau HP mati.
 
 > Tunnel di atas bersifat sementara — mati saat proses `cloudflared` / server preview dihentikan. Untuk jangka panjang, deploy ke hosting gratis (Netlify/Vercel/Cloudflare Pages) atau lanjut ke APK.
 

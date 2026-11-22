@@ -227,6 +227,7 @@ function Composer({ onAdd }: { onAdd: (entry: Entry) => void }) {
           <label className="field">
             <span className="field-label">Nama</span>
             <input
+              className="name-input"
               value={author}
               onChange={(event) => setAuthor(event.target.value)}
               placeholder="Anonim"
@@ -308,7 +309,7 @@ function EditForm({
       <div className="field-row">
         <label className="field">
           <span className="field-label">Nama</span>
-          <input value={author} onChange={(event) => setAuthor(event.target.value)} placeholder="Anonim" />
+          <input className="name-input" value={author} onChange={(event) => setAuthor(event.target.value)} placeholder="Anonim" />
         </label>
         <div className="field chips-field">
           <span className="field-label">Jenis</span>

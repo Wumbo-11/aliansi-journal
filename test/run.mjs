@@ -31,8 +31,9 @@ define('localStorage', window.localStorage)
 define('requestAnimationFrame', window.requestAnimationFrame.bind(window))
 define('cancelAnimationFrame', window.cancelAnimationFrame.bind(window))
 window.devicePixelRatio = 1
+let narrow = false
 window.matchMedia = (q) => ({
-  matches: false,
+  matches: q.includes('max-width') ? narrow : false,
   media: q,
   onchange: null,
   addEventListener() {},
@@ -199,6 +200,27 @@ check('heading: placeholder input tidak beranimasi lagi',
 check('heading: tanpa caret & tanpa catatan nama', document.querySelector('.heading-caret') === null &&
   document.querySelector('.section-note') === null)
 
+// Lampu gantung interaktif
+const lamp = document.querySelector('.lamp-rig')
+check('lampu: terpasang di hero', !!lamp)
+if (lamp) {
+  lamp.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, clientX: 120, clientY: 120 }))
+  await sleep(40)
+  check('lampu: jadi aktif saat disentuh', lamp.classList.contains('is-dragging'))
+  window.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: 260, clientY: 160 }))
+  check('lampu: cahaya ikut diatur (CSS var terisi)',
+    !!lamp.parentElement?.style.getPropertyValue('--lamp-x') &&
+    !!lamp.parentElement?.style.getPropertyValue('--lamp-y'))
+  window.dispatchEvent(new window.MouseEvent('pointerup', { bubbles: true }))
+  await sleep(40)
+  check('lampu: berhenti aktif setelah dilepas', !lamp.classList.contains('is-dragging'))
+}
+
+check('footer: teks dibuang & wordmark pakai animasi pop',
+  document.querySelector('.footer p') === null &&
+  !!document.querySelector('.reveal-pop .footer-wordmark'))
+check('arsip: eyebrow "Kumpulan tulisan" dibuang', document.querySelector('.archive .eyebrow') === null)
+
 const titleText = () => document.querySelector('.title-mark-text')?.textContent ?? ''
 const waitFor = async (fn, timeout = 5000) => {
   const start = Date.now()
@@ -285,6 +307,26 @@ const storedRace = JSON.parse(window.localStorage.getItem('aliansi-journal/v1') 
 check('race: keduanya tersimpan di lokal', storedRace.length === 2, `${storedRace.length} entri`)
 appRoot3.unmount()
 
+// ================= TES 3b: NAVIGASI 3 HALAMAN (HP BIASA) =================
+narrow = true
+const mobileHost = document.createElement('div')
+document.body.appendChild(mobileHost)
+const mobileRoot = mountApp(mobileHost)
+await sleep(150)
+check('mobile: 3 dot navigasi', document.querySelectorAll('.page-dots button').length === 3)
+check('mobile: halaman 1 = sambutan + lampu, tanpa form/arsip',
+  !!mobileHost.querySelector('.hero') && !!mobileHost.querySelector('.lamp-rig') &&
+  !mobileHost.querySelector('.composer') && !mobileHost.querySelector('.archive'))
+document.querySelectorAll('.page-dots button')[1].click()
+await sleep(120)
+check('mobile: halaman 2 = form tulis (lampu hilang)',
+  !!mobileHost.querySelector('.composer') && !mobileHost.querySelector('.lamp-rig'))
+document.querySelectorAll('.page-dots button')[2].click()
+await sleep(120)
+check('mobile: halaman 3 = arsip', !!mobileHost.querySelector('.archive'))
+mobileRoot.unmount()
+narrow = false
+
 // ================= TES 4: DETEKSI DESKTOP-HP =================
 const cssText = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
 const htmlText = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
@@ -293,7 +335,8 @@ check('deteksi: touch + viewport lebar -> zoom aktif',
   htmlText.includes('maxTouchPoints') && htmlText.includes('dataset.desktopSite') &&
   cssText.includes("html[data-desktop-site='true'] .site") &&
   cssText.includes('zoom: var(--desktop-zoom') && htmlText.includes('visualViewport') &&
-  cssText.includes("html[data-desktop-site='true'] .entry-body"))
+  cssText.includes("html[data-desktop-site='true'] .entry-body") &&
+  htmlText.includes('Newsreader'))
 check('cache: ?fresh=1 membersihkan service worker', mainText.includes("has('fresh')") && mainText.includes('getRegistrations') && mainText.includes('caches.delete'))
 
 // ================= HASIL =================

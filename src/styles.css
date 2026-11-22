@@ -14,7 +14,7 @@
   --button-text: #17130c;
   --shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
   --shadow-hover: 0 30px 70px rgba(0, 0, 0, 0.42);
-  --serif: 'Lora', 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+  --serif: 'Newsreader', 'Iowan Old Style', Georgia, 'Times New Roman', serif;
   --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
@@ -103,6 +103,15 @@ textarea:focus-visible {
   transform: none;
 }
 
+.reveal-pop {
+  transform: translateY(64px) scale(0.92);
+  transition: opacity 0.8s ease, transform 0.9s cubic-bezier(0.2, 1.25, 0.35, 1);
+}
+
+.reveal-pop.is-visible {
+  transform: none;
+}
+
 /* ── Top bar ─────────────────────────────────────────── */
 .topbar {
   display: grid;
@@ -162,8 +171,141 @@ textarea:focus-visible {
 
 /* ── Hero ────────────────────────────────────────────── */
 .hero {
+  position: relative;
+  isolation: isolate;
   text-align: center;
-  padding: clamp(44px, 8vh, 84px) 0 clamp(48px, 8vh, 80px);
+  padding: clamp(130px, 20vh, 190px) 0 clamp(48px, 8vh, 80px);
+}
+
+/* Kolam cahaya & bayangan mengikuti posisi lampu (CSS variable dari JS).
+   Statis — tidak ada scroll listener, jadi scroll tetap ringan. */
+.hero::before,
+.hero::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  z-index: -2;
+}
+
+.hero::before {
+  inset: -30% -12% -10%;
+  background: radial-gradient(
+    ellipse 320px 260px at var(--lamp-x, 50%) var(--lamp-y, 90px),
+    rgba(201, 168, 106, 0.22),
+    rgba(201, 168, 106, 0.07) 42%,
+    transparent 72%
+  );
+}
+
+.hero::after {
+  z-index: -1;
+  inset: -18% -8% 0;
+  background: radial-gradient(
+    ellipse 58% 52% at var(--lamp-x, 50%) var(--lamp-y, 90px),
+    transparent 12%,
+    rgba(9, 9, 11, 0.34) 78%,
+    rgba(9, 9, 11, 0.5) 100%
+  );
+}
+
+:root[data-theme='light'] .hero::before {
+  background: radial-gradient(
+    ellipse 320px 260px at var(--lamp-x, 50%) var(--lamp-y, 90px),
+    rgba(214, 178, 104, 0.3),
+    rgba(214, 178, 104, 0.1) 42%,
+    transparent 72%
+  );
+}
+
+:root[data-theme='light'] .hero::after {
+  background: radial-gradient(
+    ellipse 58% 52% at var(--lamp-x, 50%) var(--lamp-y, 90px),
+    transparent 14%,
+    rgba(120, 96, 56, 0.1) 80%,
+    rgba(120, 96, 56, 0.16) 100%
+  );
+}
+
+.lamp-rig {
+  position: absolute;
+  z-index: 3;
+  left: var(--lamp-x, 50%);
+  top: var(--lamp-y, 90px);
+  width: 76px;
+  height: 58px;
+  transform: translate(-50%, -8px);
+  transform-origin: 50% 0%;
+  cursor: grab;
+  touch-action: none;
+  animation: lamp-sway 6s ease-in-out infinite;
+}
+
+.lamp-rig.is-dragging {
+  animation: none;
+  cursor: grabbing;
+  transform: translate(-50%, -8px) rotate(0deg);
+}
+
+.lamp-cord {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  width: 1px;
+  height: var(--cord-length, 90px);
+  background: linear-gradient(to bottom, transparent, var(--border-strong) 70%, var(--accent));
+  opacity: 0.75;
+}
+
+.lamp-shade {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.45));
+}
+
+.lamp-wire {
+  stroke: var(--accent);
+  stroke-width: 1.4;
+}
+
+.lamp-body {
+  fill: var(--surface);
+  stroke: var(--accent);
+  stroke-width: 1.2;
+}
+
+.lamp-rim {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+
+.lamp-bulb {
+  fill: #ffe6ad;
+  filter: drop-shadow(0 0 8px rgba(255, 214, 140, 0.95));
+}
+
+.lamp-halo {
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  width: 96px;
+  height: 30px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(255, 220, 150, 0.55), transparent 70%);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+:root[data-theme='light'] .lamp-halo {
+  background: radial-gradient(ellipse, rgba(226, 186, 108, 0.45), transparent 70%);
+}
+
+@keyframes lamp-sway {
+  0%, 100% { transform: translate(-50%, -8px) rotate(-1.6deg); }
+  50% { transform: translate(-50%, -8px) rotate(1.6deg); }
 }
 
 .eyebrow {
@@ -189,6 +331,7 @@ textarea:focus-visible {
   font-weight: 500;
   letter-spacing: -0.04em;
   line-height: 1;
+  text-shadow: 0 0 30px rgba(201, 168, 106, 0.28), 0 10px 36px rgba(0, 0, 0, 0.35);
   transition: color 0.3s ease;
 }
 
@@ -284,7 +427,9 @@ textarea:focus-visible {
 
 /* ── Composer ────────────────────────────────────────── */
 .composer {
-  padding: clamp(24px, 4vw, 44px);
+  max-width: 900px;
+  margin-inline: auto;
+  padding: clamp(28px, 5vw, 56px);
   scroll-margin-top: 24px;
 }
 
@@ -320,7 +465,7 @@ textarea:focus-visible {
 
 .field {
   display: block;
-  margin-top: 20px;
+  margin-top: 32px;
 }
 
 .field-label {
@@ -344,7 +489,7 @@ textarea:focus-visible {
 .field textarea {
   display: block;
   width: 100%;
-  padding: 11px 0;
+  padding: 14px 0;
   border: 0;
   border-bottom: 1px solid var(--border);
   border-radius: 0;
@@ -414,7 +559,7 @@ textarea:focus-visible {
 .field-row {
   display: grid;
   grid-template-columns: 1fr 1.25fr;
-  gap: 28px;
+  gap: 36px;
 }
 
 .chips {
@@ -446,7 +591,7 @@ textarea:focus-visible {
 }
 
 .field textarea {
-  min-height: 150px;
+  min-height: 200px;
   resize: vertical;
   line-height: 1.6;
   font-size: 17px;
@@ -465,7 +610,7 @@ textarea:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-top: 22px;
+  margin-top: 34px;
 }
 
 .form-error {
@@ -1040,7 +1185,7 @@ textarea:focus-visible {
   }
 
   .hero {
-    padding: 44px 0 56px;
+    padding: 120px 0 56px;
   }
 
   .section-heading {
@@ -1145,7 +1290,7 @@ textarea:focus-visible {
   }
 
   .hero {
-    padding: 40px 0 48px;
+    padding: 120px 0 48px;
   }
 
   .title-mark {
@@ -1281,8 +1426,8 @@ html[data-desktop-site="true"] .theme-button {
   justify-self: end;
 }
 
-html[data-desktop-site="true"] .hero {
-  padding: 44px 0 56px;
+html[data-desktop-site='true'] .hero {
+  padding: 120px 0 56px;
 }
 
 html[data-desktop-site="true"] .section-heading {

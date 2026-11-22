@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, ReactNode, TouchEvent } from 'react'
 import DotField from './DotField'
+import HangingLamp from './HangingLamp'
 import { CATEGORIES } from './types'
 import type { Category, Entry } from './types'
 import type { Draft } from './drive'
@@ -150,7 +151,15 @@ function TitleMark() {
   )
 }
 
-function Reveal({ children, className = '' }: { children: ReactNode; className?: string }) {
+function Reveal({
+  children,
+  className = '',
+  pop = false,
+}: {
+  children: ReactNode
+  className?: string
+  pop?: boolean
+}) {
   const ref = useRef<HTMLDivElement>(null)
   const [visible, setVisible] = useState(false)
 
@@ -164,14 +173,17 @@ function Reveal({ children, className = '' }: { children: ReactNode; className?:
           observer.disconnect()
         }
       },
-      { threshold: 0.08 },
+      { threshold: pop ? 0.25 : 0.08 },
     )
     observer.observe(element)
     return () => observer.disconnect()
-  }, [])
+  }, [pop])
 
   return (
-    <div ref={ref} className={`reveal${visible ? ' is-visible' : ''} ${className}`}>
+    <div
+      ref={ref}
+      className={`reveal${pop ? ' reveal-pop' : ''}${visible ? ' is-visible' : ''} ${className}`}
+    >
       {children}
     </div>
   )
@@ -280,7 +292,6 @@ function Composer({ onAdd }: { onAdd: (entry: Entry) => void }) {
     <section className="composer panel" id="tulis" aria-labelledby="composer-heading">
       <div className="section-heading">
         <div>
-          <span className="eyebrow">Tulis</span>
           <h2 id="composer-heading"><RotatingHeading /></h2>
         </div>
       </div>
@@ -616,7 +627,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<'new' | 'old'>('new')
-  const [page, setPage] = useState<'home' | 'archive'>('home')
+  const [page, setPage] = useState<'welcome' | 'compose' | 'archive'>('welcome')
   const [isMobile, setIsMobile] = useState(isCompactView)
   const [editingId, setEditingId] = useState<string | null>(null)
   const touchStart = useRef({ x: 0, y: 0 })
@@ -860,11 +871,13 @@ export default function App() {
     window.setTimeout(() => document.querySelector<HTMLInputElement>('.title-input')?.focus(), 450)
   }
 
-  const goToPage = (next: 'home' | 'archive') => {
+  const goToPage = (next: 'welcome' | 'compose' | 'archive') => {
     setEditingId(null)
     setPage(next)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
+
+  const pageOrder: Array<'welcome' | 'compose' | 'archive'> = ['welcome', 'compose', 'archive']
 
   const onTouchStart = (event: TouchEvent) => {
     touchStart.current = {
@@ -875,16 +888,19 @@ export default function App() {
 
   const onTouchEnd = (event: TouchEvent) => {
     if (!isMobile) return
-    const tag = (event.target as HTMLElement | null)?.tagName
-    if (tag === 'INPUT' || tag === 'TEXTAREA') return
+    const target = event.target as HTMLElement | null
+    if (target?.closest('input, textarea, .lamp-rig')) return
     const dx = event.changedTouches[0].clientX - touchStart.current.x
     const dy = event.changedTouches[0].clientY - touchStart.current.y
     if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.3) {
-      goToPage(page === 'home' ? 'archive' : 'home')
+      const current = pageOrder.indexOf(page)
+      const next = current + (dx < 0 ? 1 : -1)
+      if (next >= 0 && next < pageOrder.length) goToPage(pageOrder[next])
     }
   }
 
-  const showHome = !isMobile || page === 'home'
+  const showWelcome = !isMobile || page === 'welcome'
+  const showCompose = !isMobile || page === 'compose'
   const showArchive = !isMobile || page === 'archive'
 
   return (
@@ -913,36 +929,38 @@ export default function App() {
       </header>
 
       <main>
-        {showHome && (
+        {showWelcome && (
           <section className="hero page-view">
+            <HangingLamp />
             <span className="eyebrow">Aliansi · sejak hari ini</span>
             <TitleMark />
             <div className="ornament" aria-hidden="true"><span /></div>
             <p className="hero-subtitle">
               Tempat cerita disimpan, hari dibagikan, dan suara kecil tetap berarti.
             </p>
-            <button type="button" className="hero-link" onClick={jumpToComposer}>
+            <button
+              type="button"
+              className="hero-link"
+              onClick={() => (isMobile ? goToPage('compose') : jumpToComposer())}
+            >
               Mulai menulis <span aria-hidden="true">→</span>
             </button>
           </section>
         )}
 
-        {syncError && (
+        {showCompose && syncError && (
           <div className="sync-banner" role="alert">
             Gagal sinkron dengan Drive: {syncError}
           </div>
         )}
 
-        {showHome && <Composer onAdd={addEntry} />}
+        {showCompose && <Composer onAdd={addEntry} />}
 
         <Reveal>
           {showArchive && (
           <section className="archive page-view" aria-labelledby="archive-heading">
             <div className="archive-heading">
-              <div>
-                <span className="eyebrow">Kumpulan tulisan</span>
-                <h2 id="archive-heading">Arsip</h2>
-              </div>
+              <h2 id="archive-heading">Arsip</h2>
               <span className="archive-count">
                 {loading ? 'Menyinkronkan…' : `${entries.length} tulisan`}
               </span>
@@ -996,28 +1014,23 @@ export default function App() {
       </main>
 
       <footer className="footer">
-        <p>Aliansi — ruang untuk cerita yang dibagi.</p>
-        <Reveal>
+        <Reveal pop>
           <div className="footer-wordmark" aria-hidden="true">ALIANSI</div>
         </Reveal>
       </footer>
 
       {isMobile && (
         <nav className="page-dots" aria-label="Navigasi halaman">
-          <button
-            type="button"
-            className={page === 'home' ? 'is-active' : ''}
-            onClick={() => goToPage('home')}
-            aria-label="Halaman utama"
-            aria-current={page === 'home'}
-          />
-          <button
-            type="button"
-            className={page === 'archive' ? 'is-active' : ''}
-            onClick={() => goToPage('archive')}
-            aria-label="Halaman arsip"
-            aria-current={page === 'archive'}
-          />
+          {(['welcome', 'compose', 'archive'] as const).map((item, index) => (
+            <button
+              key={item}
+              type="button"
+              className={page === item ? 'is-active' : ''}
+              onClick={() => goToPage(item)}
+              aria-label={['Halaman sambutan', 'Halaman tulis', 'Halaman arsip'][index]}
+              aria-current={page === item}
+            />
+          ))}
         </nav>
       )}
 

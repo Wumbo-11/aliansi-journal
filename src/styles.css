@@ -309,16 +309,6 @@ textarea:focus-visible {
   min-height: 1.2em;
 }
 
-.heading-caret {
-  display: inline-block;
-  width: 2px;
-  height: 0.86em;
-  margin-left: 0.08em;
-  background: var(--accent);
-  vertical-align: -0.08em;
-  animation: blink 1.1s steps(1, end) infinite;
-}
-
 .section-note {
   max-width: 230px;
   margin: 0;
@@ -1398,7 +1388,20 @@ html[data-desktop-site='true'] .title-mark {
   font-size: 60px;
 }
 html[data-desktop-site='true'] .archive-heading h2 {
-  font-size: 34px;
+  font-size: 28px;
+}
+html[data-desktop-site='true'] .entry-card h3 {
+  font-size: 24px;
+}
+html[data-desktop-site='true'] .entry-body {
+  font-size: 12px;
+}
+html[data-desktop-site='true'] .entry-author {
+  font-size: 14px;
+}
+html[data-desktop-site='true'] .category-tag,
+html[data-desktop-site='true'] .entry-top time {
+  font-size: 10px;
 }
 html[data-desktop-site='true'] .hero-subtitle {
   max-width: 100%;

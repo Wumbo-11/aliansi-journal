@@ -213,12 +213,7 @@ function RotatingHeading() {
     return () => window.clearInterval(timer)
   }, [index, reducedMotion])
 
-  return (
-    <>
-      <span className="rotating-heading-text">{shown || '\u00a0'}</span>
-      <span className="heading-caret" aria-hidden="true" />
-    </>
-  )
+  return <span className="rotating-heading-text">{shown || '\u00a0'}</span>
 }
 
 /**
@@ -288,7 +283,6 @@ function Composer({ onAdd }: { onAdd: (entry: Entry) => void }) {
           <span className="eyebrow">Tulis</span>
           <h2 id="composer-heading"><RotatingHeading /></h2>
         </div>
-        <p className="section-note">Nama boleh dikosongkan — cerita tetap berbicara.</p>
       </div>
 
       <form onSubmit={submit} noValidate>

@@ -196,6 +196,8 @@ check('heading: animasi teks di judul form', await (async () => {
 check('heading: placeholder input tidak beranimasi lagi',
   document.querySelector('.input-placeholder') === null &&
   document.querySelector('.title-input')?.getAttribute('placeholder') === 'Tulis judul di sini…')
+check('heading: tanpa caret & tanpa catatan nama', document.querySelector('.heading-caret') === null &&
+  document.querySelector('.section-note') === null)
 
 const titleText = () => document.querySelector('.title-mark-text')?.textContent ?? ''
 const waitFor = async (fn, timeout = 5000) => {
@@ -290,7 +292,8 @@ const mainText = readFileSync(new URL('../src/main.tsx', import.meta.url), 'utf8
 check('deteksi: touch + viewport lebar -> zoom aktif',
   htmlText.includes('maxTouchPoints') && htmlText.includes('dataset.desktopSite') &&
   cssText.includes("html[data-desktop-site='true'] .site") &&
-  cssText.includes('zoom: var(--desktop-zoom'))
+  cssText.includes('zoom: var(--desktop-zoom') && htmlText.includes('visualViewport') &&
+  cssText.includes("html[data-desktop-site='true'] .entry-body"))
 check('cache: ?fresh=1 membersihkan service worker', mainText.includes("has('fresh')") && mainText.includes('getRegistrations') && mainText.includes('caches.delete'))
 
 // ================= HASIL =================

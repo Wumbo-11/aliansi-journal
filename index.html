@@ -26,8 +26,15 @@
           var touch = navigator.maxTouchPoints > 0 || 'ontouchstart' in window || pointerCoarse
           var layoutW = window.innerWidth
           if (touch && layoutW > 720) {
+            // Zoom dihitung dari rasio viewport asli — bukan angka tetap.
+            // Chrome desktop mode mengompres layout ~980px ke layar HP;
+            // zoom sekalian dibatasi supaya teks arsip tidak membengkak.
+            var vv = window.visualViewport
+            var visualW = vv && vv.width ? vv.width : screen.width / (window.devicePixelRatio || 1)
+            var zoom = visualW > 0 ? layoutW / visualW : 1
+            zoom = Math.max(1, Math.min(2.2, zoom))
             root.dataset.desktopSite = 'true'
-            root.style.setProperty('--desktop-zoom', '2.5')
+            root.style.setProperty('--desktop-zoom', zoom.toFixed(2))
           } else {
             delete root.dataset.desktopSite
             root.style.removeProperty('--desktop-zoom')

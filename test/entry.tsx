@@ -4,9 +4,9 @@ import type { Root } from 'react-dom/client'
 import DotField from '../src/DotField'
 import App from '../src/App'
 
-export function mountDotField(container: Element): Root {
+export function mountDotField(container: Element, theme: 'dark' | 'light' = 'dark'): Root {
   const root = createRoot(container)
-  root.render(createElement(DotField, { theme: 'dark' }))
+  root.render(createElement(DotField, { theme }))
   return root
 }
 

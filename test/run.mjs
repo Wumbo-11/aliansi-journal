@@ -7,7 +7,7 @@ const vc = new VirtualConsole()
 vc.on('jsdomError', (e) => problems.push('jsdomError: ' + e.message))
 vc.on('error', (...a) => problems.push('console.error: ' + a.join(' ')))
 
-const dom = new JSDOM('<!doctype html><html><body><div id="dot"></div><div id="app"></div></body></html>', {
+const dom = new JSDOM('<!doctype html><html><body><div id="dot"></div><div id="touch"></div><div id="app"></div></body></html>', {
   pretendToBeVisual: true,
   url: 'http://localhost/',
   virtualConsole: vc,
@@ -150,6 +150,34 @@ await sleep(400)
 check('dot: meluruh & idle setelah mouseleave', ctx.fills.length === leftCount)
 
 dotRoot.unmount()
+
+// ================= TES 1b: MODE DESKTOP DI HP (touch) & TEMA TERANG =================
+Object.defineProperty(window.navigator, 'maxTouchPoints', { value: 2, configurable: true })
+window.devicePixelRatio = 3
+ctx.fills.length = 0
+const touchRoot = mountDotField(document.getElementById('touch'), 'light')
+const start2 = Date.now()
+while (Date.now() - start2 < 3000 && ctx.fills.length === 0) await sleep(40)
+const canvas = document.querySelector('.dot-field')
+check('touch: DPR canvas dibatasi (ringan)', !!canvas && canvas.width <= window.innerWidth * 1.25 + 2, `${canvas?.width}px`)
+
+window.dispatchEvent(new window.MouseEvent('mousemove', { clientX: 500, clientY: 400 }))
+await sleep(250)
+const touchMaxAlpha = Math.max(...ctx.fills.map((f) => f.alpha))
+check('tema terang: titik terlihat (alpha cukup)', touchMaxAlpha > 0.3, `alpha=${touchMaxAlpha.toFixed(3)}`)
+
+// Scroll: tidak boleh ada gambar baru selama scroll berlangsung
+let fillsBeforeScroll = ctx.fills.length
+for (let i = 0; i < 6; i += 1) {
+  window.dispatchEvent(new window.Event('scroll'))
+  await sleep(50)
+}
+check('touch: scroll tidak menggambar canvas (anti-lag)', ctx.fills.length === fillsBeforeScroll, `${fillsBeforeScroll} -> ${ctx.fills.length}`)
+await sleep(500)
+check('touch: gambar lanjut lagi setelah scroll selesai', ctx.fills.length > fillsBeforeScroll)
+touchRoot.unmount()
+Object.defineProperty(window.navigator, 'maxTouchPoints', { value: 0, configurable: true })
+window.devicePixelRatio = 1
 
 // ================= TES 2: APP (typewriter, draft, simpan) =================
 const appRoot = mountApp(document.getElementById('app'))

@@ -22,12 +22,15 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
     if (!ctx) return
 
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    const compact = window.matchMedia('(max-width: 720px)').matches
+    const narrow = window.matchMedia('(max-width: 720px)').matches
+    // Mode "desktop site" di HP tetap terdeteksi sebagai layar lebar —
+    // tapi perangkatnya touch. Pakai profil ringan supaya scroll tetap mulus.
+    const touch = (navigator.maxTouchPoints || 0) > 0
+    const compact = narrow || touch
 
-    // Rapet seperti referensi; sedikit lebih longgar di HP biar ringan.
-    const dotRadius = compact ? 1.3 : 1.5
-    const spacing = compact ? 16 : 14
-    const cursorRadius = compact ? 240 : 350
+    const dotRadius = touch && !narrow ? 1.2 : compact ? 1.3 : 1.5
+    const spacing = touch && !narrow ? 18 : compact ? 16 : 14
+    const cursorRadius = touch && !narrow ? 220 : compact ? 240 : 350
     const bulgeStrength = compact ? 62 : 82
 
     let dots: Dot[] = []
@@ -39,6 +42,8 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
     let speed = 0
     let lastDraw = 0
     let idleFrames = 0
+    let scrolling = false
+    let scrollTimer = 0
     const pointer = { x: -9999, y: -9999, prevX: -9999, prevY: -9999, active: false }
 
     // Gradient dibuat sekali per resize, bukan tiap frame — jauh lebih ringan.
@@ -49,8 +54,8 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
         g.addColorStop(0, 'rgba(243,239,231,0.9)')
         g.addColorStop(1, 'rgba(201,168,106,0.55)')
       } else {
-        g.addColorStop(0, 'rgba(27,25,22,0.8)')
-        g.addColorStop(1, 'rgba(154,123,63,0.5)')
+        g.addColorStop(0, 'rgba(27,25,22,0.95)')
+        g.addColorStop(1, 'rgba(124,95,45,0.7)')
       }
       gradient = g
     }
@@ -58,7 +63,8 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
     const build = () => {
       width = window.innerWidth
       height = window.innerHeight
-      const ratio = Math.min(window.devicePixelRatio || 1, 2)
+      // DPR tinggi di HP bikin canvas jauh lebih berat — batasi.
+      const ratio = Math.min(window.devicePixelRatio || 1, touch ? 1.25 : 2)
       canvas.width = Math.floor(width * ratio)
       canvas.height = Math.floor(height * ratio)
       canvas.style.width = `${width}px`
@@ -94,8 +100,9 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
     const speedTimer = window.setInterval(trackSpeed, 20)
 
     const BUCKETS = 7
-    const baseAlpha = theme === 'dark' ? 0.035 : 0.03
-    const peakAlpha = theme === 'dark' ? 0.5 : 0.4
+    // Tema terang butuh kontras lebih tinggi supaya titiknya benar-benar terlihat.
+    const baseAlpha = theme === 'dark' ? 0.045 : 0.11
+    const peakAlpha = theme === 'dark' ? 0.5 : 0.46
 
     const draw = () => {
       ctx.clearRect(0, 0, width, height)
@@ -164,6 +171,12 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
     }
 
     const loop = (time: number) => {
+      // Jangan menggambar sama sekali saat scroll di perangkat touch —
+      // ini sumber utama lag di mode desktop HP.
+      if (scrolling) {
+        raf = requestAnimationFrame(loop)
+        return
+      }
       // Di HP cukup ~30 fps supaya ringan.
       if (compact && time - lastDraw < 30) {
         raf = requestAnimationFrame(loop)
@@ -212,6 +225,15 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
         start()
       }
     }
+    const onScroll = () => {
+      if (!touch) return
+      scrolling = true
+      window.clearTimeout(scrollTimer)
+      scrollTimer = window.setTimeout(() => {
+        scrolling = false
+        start()
+      }, 180)
+    }
 
     build()
     if (reduced) {
@@ -227,10 +249,13 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
     }
     window.addEventListener('resize', onResize)
     document.addEventListener('visibilitychange', onVisibility)
+    if (touch) window.addEventListener('scroll', onScroll, { passive: true })
 
     return () => {
       window.clearInterval(speedTimer)
+      window.clearTimeout(scrollTimer)
       cancelAnimationFrame(raf)
+      window.removeEventListener('scroll', onScroll)
       window.removeEventListener('resize', onResize)
       document.removeEventListener('visibilitychange', onVisibility)
       window.removeEventListener('mousemove', onMouseMove)

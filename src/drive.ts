@@ -3,6 +3,7 @@ import { isEntry } from './types'
 
 export const DRIVE_URL_KEY = 'aliansi-journal/drive-url'
 export const LOCAL_KEY = 'aliansi-journal/v1'
+export const OWNED_KEY = 'aliansi-journal/owned'
 
 const DEFAULT_DRIVE_URL =
   'https://script.google.com/macros/s/AKfycbz59vEV5ew_Xh3e4GAx5QxybUGLZQD_V_UrfD1sCoKtH3o1j0NsbFOFc3WQxv6z38XF/exec'
@@ -41,6 +42,25 @@ export function writeEntries(entries: Entry[]): void {
     localStorage.setItem(LOCAL_KEY, JSON.stringify(entries))
   } catch {
     // Storage penuh / diblokir — abaikan, data tetap ada di memori.
+  }
+}
+
+/** Daftar id cerita yang dibuat dari perangkat ini (dipakai buat tombol edit). */
+export function readOwned(): string[] {
+  try {
+    const raw = localStorage.getItem(OWNED_KEY)
+    const parsed: unknown = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+export function writeOwned(ids: string[]): void {
+  try {
+    localStorage.setItem(OWNED_KEY, JSON.stringify(ids))
+  } catch {
+    // Abaikan.
   }
 }
 
@@ -85,4 +105,18 @@ export async function addEntryRemote(url: string, entry: Entry): Promise<Entry> 
 
 export async function deleteEntryRemote(url: string, id: string): Promise<void> {
   await post(url, { action: 'delete', id })
+}
+
+/**
+ * Edit = buat file baru dengan isi terbaru, lalu hapus file lama.
+ * Cara ini jalan di script yang sudah ter-deploy (belum punya action 'update').
+ */
+export async function updateEntryRemote(url: string, next: Entry): Promise<Entry> {
+  const saved = await addEntryRemote(url, { ...next, id: crypto.randomUUID() })
+  try {
+    await deleteEntryRemote(url, next.id)
+  } catch {
+    // File lama gagal dihapus — cerita baru tetap tersimpan.
+  }
+  return saved
 }

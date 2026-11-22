@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { FormEvent, TouchEvent } from 'react'
 import { CATEGORIES } from './types'
 import type { Category, Entry } from './types'
 import {
@@ -8,8 +8,11 @@ import {
   getDriveUrl,
   listEntries,
   readEntries,
+  readOwned,
   setDriveUrl,
+  updateEntryRemote,
   writeEntries,
+  writeOwned,
 } from './drive'
 
 const THEME_KEY = 'aliansi-theme'
@@ -45,6 +48,15 @@ function MoonIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
       <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z" />
+    </svg>
+  )
+}
+
+function PencilIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+      <path d="m4 20 4.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10L4 20Z" />
+      <path d="m13.5 7.5 3 3" />
     </svg>
   )
 }
@@ -167,7 +179,6 @@ function Composer({ onAdd }: { onAdd: (entry: Entry) => void }) {
               setError('')
             }}
             placeholder="Berjudul apa hari ini?"
-            maxLength={120}
           />
         </label>
 
@@ -178,7 +189,6 @@ function Composer({ onAdd }: { onAdd: (entry: Entry) => void }) {
               value={author}
               onChange={(event) => setAuthor(event.target.value)}
               placeholder="Anonim"
-              maxLength={60}
             />
           </label>
           <div className="field">
@@ -200,7 +210,7 @@ function Composer({ onAdd }: { onAdd: (entry: Entry) => void }) {
         </div>
 
         <label className="field">
-          <span className="field-label">Isi cerita</span>
+          <span className="field-label">Isi cerita <span className="optional">tanpa batas</span></span>
           <textarea
             value={body}
             onChange={(event) => {
@@ -209,9 +219,8 @@ function Composer({ onAdd }: { onAdd: (entry: Entry) => void }) {
             }}
             placeholder="Tulis apa saja yang ingin kamu simpan atau bagikan…"
             rows={6}
-            maxLength={5000}
           />
-          <span className="char-count">{body.length} / 5000</span>
+          <span className="char-count">∞</span>
         </label>
 
         <div className="form-footer">
@@ -226,7 +235,91 @@ function Composer({ onAdd }: { onAdd: (entry: Entry) => void }) {
   )
 }
 
-function EntryCard({ entry, index, onDelete }: { entry: Entry; index: number; onDelete: (id: string) => void }) {
+function EditForm({
+  entry,
+  onSave,
+  onCancel,
+}: {
+  entry: Entry
+  onSave: (next: Entry) => void
+  onCancel: () => void
+}) {
+  const [title, setTitle] = useState(entry.title)
+  const [author, setAuthor] = useState(entry.author)
+  const [body, setBody] = useState(entry.body)
+  const [category, setCategory] = useState<Category>(entry.category)
+  const [error, setError] = useState('')
+
+  const save = (event: FormEvent) => {
+    event.preventDefault()
+    if (!title.trim() || !body.trim()) {
+      setError('Judul dan isi cerita wajib diisi.')
+      return
+    }
+    onSave({ ...entry, title: title.trim(), author: author.trim(), body: body.trim(), category })
+  }
+
+  return (
+    <form className="edit-form" onSubmit={save} noValidate>
+      <label className="field">
+        <span className="field-label">Judul</span>
+        <input className="title-input" value={title} onChange={(event) => setTitle(event.target.value)} />
+      </label>
+      <div className="field-row">
+        <label className="field">
+          <span className="field-label">Nama <span className="optional">opsional</span></span>
+          <input value={author} onChange={(event) => setAuthor(event.target.value)} placeholder="Anonim" />
+        </label>
+        <div className="field">
+          <span className="field-label">Jenis</span>
+          <div className="chips" role="group" aria-label="Jenis tulisan">
+            {CATEGORIES.map((item) => (
+              <button
+                key={item}
+                type="button"
+                className={`chip${category === item ? ' is-active' : ''}`}
+                onClick={() => setCategory(item)}
+                aria-pressed={category === item}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <label className="field">
+        <span className="field-label">Isi cerita <span className="optional">tanpa batas</span></span>
+        <textarea value={body} onChange={(event) => setBody(event.target.value)} rows={5} />
+        <span className="char-count">∞</span>
+      </label>
+      <div className="form-footer">
+        <button type="button" className="ghost-button" onClick={onCancel}>Batal</button>
+        <button type="submit" className="primary-button">Simpan perubahan</button>
+      </div>
+      <p className={`form-error${error ? ' is-visible' : ''}`} role="alert">{error || '\u00a0'}</p>
+    </form>
+  )
+}
+
+function EntryCard({
+  entry,
+  index,
+  owned,
+  editing,
+  onDelete,
+  onEdit,
+  onSaveEdit,
+  onCancelEdit,
+}: {
+  entry: Entry
+  index: number
+  owned: boolean
+  editing: boolean
+  onDelete: (id: string) => void
+  onEdit: (id: string) => void
+  onSaveEdit: (next: Entry) => void
+  onCancelEdit: () => void
+}) {
   return (
     <article className="entry-card panel" style={{ animationDelay: `${Math.min(index, 8) * 45}ms` }}>
       <div className="entry-top">
@@ -236,14 +329,24 @@ function EntryCard({ entry, index, onDelete }: { entry: Entry; index: number; on
         </time>
       </div>
       <h3>{entry.title}</h3>
-      <p className="entry-body">{entry.body}</p>
+      {editing ? (
+        <EditForm entry={entry} onSave={onSaveEdit} onCancel={onCancelEdit} />
+      ) : (
+        <p className="entry-body">{entry.body}</p>
+      )}
       <div className="entry-footer">
         <span className="entry-author">— {entry.author || 'Anonim'}</span>
         <div className="entry-actions">
-          {entry.link && (
-            <a className="drive-link" href={entry.link} target="_blank" rel="noreferrer">
-              Drive <span aria-hidden="true">↗</span>
-            </a>
+          {owned && (
+            <button
+              type="button"
+              className="edit-button"
+              onClick={() => onEdit(entry.id)}
+              aria-label={`Edit ${entry.title}`}
+              title="Edit cerita ini"
+            >
+              <PencilIcon />
+            </button>
           )}
           <button
             type="button"
@@ -307,7 +410,7 @@ function DriveSettings({
 
         <p className="modal-desc">
           Tempel URL Web App Apps Script dari akun Google lu. Setelah disimpan, semua cerita
-          dibaca & ditulis ke Drive lu, dan tiap cerita dapat link sendiri.
+          dibaca & ditulis ke Drive lu, dan tiap cerita punya link sendiri.
         </p>
 
         <label className="field">
@@ -346,11 +449,18 @@ export default function App() {
   )
   const [driveUrl, setUrl] = useState(getDriveUrl)
   const [entries, setEntries] = useState<Entry[]>(readEntries)
+  const [owned, setOwned] = useState<string[]>(readOwned)
   const [loading, setLoading] = useState(false)
   const [syncError, setSyncError] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<'new' | 'old'>('new')
+  const [page, setPage] = useState<'home' | 'archive'>('home')
+  const [isMobile, setIsMobile] = useState(
+    () => window.matchMedia('(max-width: 720px)').matches,
+  )
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const touchStart = useRef({ x: 0, y: 0 })
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -360,6 +470,13 @@ export default function App() {
       theme === 'dark' ? '#0d0d0f' : '#f6f3ed',
     )
   }, [theme])
+
+  useEffect(() => {
+    const queryMobile = window.matchMedia('(max-width: 720px)')
+    const onChange = () => setIsMobile(queryMobile.matches)
+    queryMobile.addEventListener('change', onChange)
+    return () => queryMobile.removeEventListener('change', onChange)
+  }, [])
 
   useEffect(() => {
     if (!driveUrl) {
@@ -391,14 +508,32 @@ export default function App() {
     writeEntries(next)
   }
 
+  const markOwned = (id: string) => {
+    setOwned((current) => {
+      const next = current.includes(id) ? current : [...current, id]
+      writeOwned(next)
+      return next
+    })
+  }
+
+  const unmarkOwned = (id: string) => {
+    setOwned((current) => {
+      const next = current.filter((item) => item !== id)
+      writeOwned(next)
+      return next
+    })
+  }
+
   const addEntry = (entry: Entry) => {
     if (!driveUrl) {
       commit([entry, ...entries])
+      markOwned(entry.id)
       return
     }
     addEntryRemote(driveUrl, entry)
       .then((saved) => {
         commit([saved, ...entries])
+        markOwned(saved.id)
         setSyncError('')
       })
       .catch((error: unknown) => {
@@ -409,15 +544,37 @@ export default function App() {
   const removeEntry = (id: string) => {
     if (!driveUrl) {
       commit(entries.filter((entry) => entry.id !== id))
+      unmarkOwned(id)
       return
     }
     deleteEntryRemote(driveUrl, id)
       .then(() => {
         commit(entries.filter((entry) => entry.id !== id))
+        unmarkOwned(id)
         setSyncError('')
       })
       .catch((error: unknown) => {
         setSyncError(`Gagal menghapus di Drive: ${error instanceof Error ? error.message : String(error)}`)
+      })
+  }
+
+  const saveEdit = (next: Entry) => {
+    const oldId = next.id
+    if (!driveUrl) {
+      commit(entries.map((entry) => (entry.id === oldId ? next : entry)))
+      setEditingId(null)
+      return
+    }
+    updateEntryRemote(driveUrl, next)
+      .then((saved) => {
+        commit(entries.map((entry) => (entry.id === oldId ? saved : entry)))
+        unmarkOwned(oldId)
+        markOwned(saved.id)
+        setEditingId(null)
+        setSyncError('')
+      })
+      .catch((error: unknown) => {
+        setSyncError(`Gagal mengedit di Drive: ${error instanceof Error ? error.message : String(error)}`)
       })
   }
 
@@ -438,8 +595,35 @@ export default function App() {
     window.setTimeout(() => document.querySelector<HTMLInputElement>('.title-input')?.focus(), 450)
   }
 
+  const goToPage = (next: 'home' | 'archive') => {
+    setEditingId(null)
+    setPage(next)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const onTouchStart = (event: TouchEvent) => {
+    touchStart.current = {
+      x: event.touches[0].clientX,
+      y: event.touches[0].clientY,
+    }
+  }
+
+  const onTouchEnd = (event: TouchEvent) => {
+    if (!isMobile) return
+    const tag = (event.target as HTMLElement | null)?.tagName
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return
+    const dx = event.changedTouches[0].clientX - touchStart.current.x
+    const dy = event.changedTouches[0].clientY - touchStart.current.y
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.3) {
+      goToPage(page === 'home' ? 'archive' : 'home')
+    }
+  }
+
+  const showHome = !isMobile || page === 'home'
+  const showArchive = !isMobile || page === 'archive'
+
   return (
-    <div className="site">
+    <div className="site" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       <header className="topbar">
         <span className="topbar-brand">RUANG CERITA</span>
         <div className="topbar-actions">
@@ -451,9 +635,6 @@ export default function App() {
           >
             <span className={`status-dot${driveUrl ? (syncError ? ' is-error' : ' is-on') : ''}`} />
             Drive
-          </button>
-          <button type="button" className="text-button" onClick={jumpToComposer}>
-            Tulis <span aria-hidden="true">↓</span>
           </button>
           <button
             type="button"
@@ -468,17 +649,19 @@ export default function App() {
       </header>
 
       <main>
-        <section className="hero">
-          <span className="eyebrow">Aliansi · sejak hari ini</span>
-          <TitleMark />
-          <div className="ornament" aria-hidden="true"><span /></div>
-          <p className="hero-subtitle">
-            Tempat cerita disimpan, hari dibagikan, dan suara kecil tetap berarti.
-          </p>
-          <button type="button" className="hero-link" onClick={jumpToComposer}>
-            Mulai menulis <span aria-hidden="true">→</span>
-          </button>
-        </section>
+        {showHome && (
+          <section className="hero page-view">
+            <span className="eyebrow">Aliansi · sejak hari ini</span>
+            <TitleMark />
+            <div className="ornament" aria-hidden="true"><span /></div>
+            <p className="hero-subtitle">
+              Tempat cerita disimpan, hari dibagikan, dan suara kecil tetap berarti.
+            </p>
+            <button type="button" className="hero-link" onClick={jumpToComposer}>
+              Mulai menulis <span aria-hidden="true">→</span>
+            </button>
+          </section>
+        )}
 
         {syncError && (
           <div className="sync-banner" role="alert">
@@ -486,58 +669,89 @@ export default function App() {
           </div>
         )}
 
-        <Composer onAdd={addEntry} />
+        {showHome && <Composer onAdd={addEntry} />}
 
-        <section className="archive" aria-labelledby="archive-heading">
-          <div className="archive-heading">
-            <div>
-              <span className="eyebrow">Kumpulan tulisan</span>
-              <h2 id="archive-heading">Arsip</h2>
+        {showArchive && (
+          <section className="archive page-view" aria-labelledby="archive-heading">
+            <div className="archive-heading">
+              <div>
+                <span className="eyebrow">Kumpulan tulisan</span>
+                <h2 id="archive-heading">Arsip</h2>
+              </div>
+              <span className="archive-count">
+                {loading ? 'Menyinkronkan…' : `${entries.length} tulisan`}
+              </span>
             </div>
-            <span className="archive-count">
-              {loading ? 'Menyinkronkan…' : `${entries.length} tulisan`}
-            </span>
-          </div>
 
-          <div className="archive-tools">
-            <label className="search-field">
-              <SearchIcon />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Cari cerita…"
-                aria-label="Cari cerita"
-              />
-            </label>
-            <button
-              type="button"
-              className="sort-button"
-              onClick={() => setSort((current) => (current === 'new' ? 'old' : 'new'))}
-              title="Balik urutan"
-            >
-              {sort === 'new' ? 'Terbaru' : 'Terlama'} <span aria-hidden="true">⇅</span>
-            </button>
-          </div>
+            <div className="archive-tools">
+              <label className="search-field">
+                <SearchIcon />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Cari cerita…"
+                  aria-label="Cari cerita"
+                />
+              </label>
+              <button
+                type="button"
+                className="sort-button"
+                onClick={() => setSort((current) => (current === 'new' ? 'old' : 'new'))}
+                title="Balik urutan"
+              >
+                {sort === 'new' ? 'Terbaru' : 'Terlama'} <span aria-hidden="true">⇅</span>
+              </button>
+            </div>
 
-          {visible.length > 0 ? (
-            <div className="entry-grid">
-              {visible.map((entry, index) => (
-                <EntryCard key={entry.id} entry={entry} index={index} onDelete={removeEntry} />
-              ))}
-            </div>
-          ) : (
-            <div className="empty-state">
-              <p>{entries.length === 0 ? 'Belum ada cerita di sini.' : 'Tidak ada tulisan yang cocok.'}</p>
-              <span>{entries.length === 0 ? 'Jadilah yang pertama menulis.' : 'Coba kata kunci lain.'}</span>
-            </div>
-          )}
-        </section>
+            {visible.length > 0 ? (
+              <div className="entry-grid">
+                {visible.map((entry, index) => (
+                  <EntryCard
+                    key={entry.id}
+                    entry={entry}
+                    index={index}
+                    owned={owned.includes(entry.id)}
+                    editing={editingId === entry.id}
+                    onDelete={removeEntry}
+                    onEdit={setEditingId}
+                    onSaveEdit={saveEdit}
+                    onCancelEdit={() => setEditingId(null)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="empty-state">
+                <p>{entries.length === 0 ? 'Belum ada cerita di sini.' : 'Tidak ada tulisan yang cocok.'}</p>
+                <span>{entries.length === 0 ? 'Jadilah yang pertama menulis.' : 'Coba kata kunci lain.'}</span>
+              </div>
+            )}
+          </section>
+        )}
       </main>
 
       <footer className="footer">
         <span className="footer-mark">A</span>
         <p>Aliansi — ruang untuk cerita yang dibagi.</p>
       </footer>
+
+      {isMobile && (
+        <nav className="page-dots" aria-label="Navigasi halaman">
+          <button
+            type="button"
+            className={page === 'home' ? 'is-active' : ''}
+            onClick={() => goToPage('home')}
+            aria-label="Halaman utama"
+            aria-current={page === 'home'}
+          />
+          <button
+            type="button"
+            className={page === 'archive' ? 'is-active' : ''}
+            onClick={() => goToPage('archive')}
+            aria-label="Halaman arsip"
+            aria-current={page === 'archive'}
+          />
+        </nav>
+      )}
 
       {settingsOpen && (
         <DriveSettings

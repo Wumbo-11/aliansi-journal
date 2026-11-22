@@ -610,6 +610,28 @@ textarea:focus-visible {
   font-style: italic;
 }
 
+.edit-button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--faint);
+  transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.edit-button:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.edit-button svg {
+  width: 16px;
+  height: 16px;
+}
+
 .delete-button {
   display: grid;
   place-items: center;
@@ -852,35 +874,92 @@ textarea:focus-visible {
 /* ── Responsive ──────────────────────────────────────── */
 @media (max-width: 720px) {
   .site {
-    width: min(100% - 32px, 1120px);
+    width: min(100% - 28px, 1120px);
+    padding-bottom: 88px;
   }
 
   .topbar {
-    padding-top: 20px;
+    padding: 16px 0 4px;
+  }
+
+  .topbar-brand {
+    display: none;
+  }
+
+  .topbar-actions {
+    gap: 14px;
+  }
+
+  .hero {
+    padding: 44px 0 56px;
   }
 
   .section-heading {
     display: block;
   }
 
+  .section-heading h2 {
+    font-size: 27px;
+  }
+
   .section-note {
     max-width: none;
-    margin-top: 10px;
+    margin-top: 6px;
+    font-size: 11px;
     text-align: left;
+  }
+
+  .composer {
+    padding: 20px 18px;
+  }
+
+  .field {
+    margin-top: 16px;
+  }
+
+  .field input,
+  .field textarea {
+    padding: 9px 0;
+  }
+
+  .title-input {
+    font-size: 23px !important;
   }
 
   .field-row {
     grid-template-columns: 1fr;
-    gap: 4px;
+    gap: 2px;
+  }
+
+  .chips {
+    gap: 6px;
+    padding-top: 6px;
+  }
+
+  .chip {
+    padding: 7px 12px;
+    font-size: 11px;
+  }
+
+  .field textarea {
+    min-height: 118px;
   }
 
   .form-footer {
     align-items: stretch;
     flex-direction: column;
+    gap: 10px;
+    margin-top: 16px;
   }
 
   .primary-button {
     justify-content: center;
+    padding: 13px 20px;
+    font-size: 10px;
+  }
+
+  .archive {
+    margin-top: 52px;
   }
 
   .archive-tools {
@@ -897,9 +976,70 @@ textarea:focus-visible {
     grid-template-columns: 1fr;
   }
 
-  .footer {
-    margin-top: 64px;
+  .entry-card {
+    padding: 22px;
   }
+
+  .footer {
+    margin-top: 56px;
+  }
+}
+
+/* ── Edit form & halaman ─────────────────────────────── */
+.edit-form {
+  margin-top: 18px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+  animation: fade-in 0.25s ease both;
+}
+
+.edit-form .field {
+  margin-top: 18px;
+}
+
+.edit-form .form-error {
+  text-align: right;
+}
+
+.page-view {
+  animation: page-in 0.32s ease both;
+}
+
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+.page-dots {
+  position: fixed;
+  z-index: 40;
+  left: 50%;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow);
+  transform: translateX(-50%);
+}
+
+.page-dots button {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--faint);
+  transition: width 0.28s ease, background-color 0.28s ease;
+}
+
+.page-dots button.is-active {
+  width: 22px;
+  background: var(--accent);
 }
 
 @media (prefers-reduced-motion: reduce) {

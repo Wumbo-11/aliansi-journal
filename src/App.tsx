@@ -966,9 +966,9 @@ export default function App() {
 
         {showCompose && <Composer onAdd={addEntry} />}
 
-        <Reveal>
-          {showArchive && (
-          <section className="archive page-view" aria-labelledby="archive-heading">
+        {showArchive && (
+          <Reveal>
+            <section className="archive page-view" aria-labelledby="archive-heading">
             <div className="archive-heading">
               <h2 id="archive-heading">Arsip</h2>
               <span className="archive-count">
@@ -1018,9 +1018,9 @@ export default function App() {
                 <span>{entries.length === 0 ? 'Jadilah yang pertama menulis.' : 'Coba kata kunci lain.'}</span>
               </div>
             )}
-          </section>
-          )}
-        </Reveal>
+            </section>
+          </Reveal>
+        )}
       </main>
 
       <footer className="footer">

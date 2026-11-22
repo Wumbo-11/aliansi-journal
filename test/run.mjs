@@ -379,8 +379,16 @@ mobileRoot.unmount()
 narrow = false
 
 // Layout satu layar + dots tidak floating + tanpa pita UFO
-check('mobile: satu layar utuh (site height 100dvh, overflow hidden)',
-  /@media \(max-width: 720px\)[\s\S]*?\.site \{[\s\S]*?height: 100dvh[\s\S]*?overflow: hidden/.test(cssText))
+check('mobile: satu layar utuh (site height 100%, overflow hidden)',
+  /@media \(max-width: 720px\)[\s\S]*?\.site \{[\s\S]*?height: 100%;[\s\S]*?overflow: hidden/.test(cssText))
+check('mobile: dokumen dikunci (html/body 100dvh, overflow hidden)',
+  /html,\s*body \{\s*height: 100dvh;\s*max-height: 100dvh;\s*overflow: hidden;/.test(cssText))
+check('mobile: wrapper reveal transparan (tidak menambah tinggi)',
+  /\.site > main > \.reveal \{\s*display: contents;/.test(cssText))
+check('mobile: form beri jeda antar sub (field 22px)', /\.field \{\s*margin-top: 22px;/.test(cssText))
+check('mobile: dots turun & aman dari safe-area',
+  /\.page-dots \{[\s\S]*?padding: 26px 0 max\(18px, env\(safe-area-inset-bottom\)\)/.test(cssText))
+check('mobile: lampu diberi jarak lega di atas judul (150px)', /\.hero-inner \{[\s\S]{0,120}padding-top: 150px/.test(cssText))
 check('mobile: dots jadi bagian layout (bukan floating)',
   /\.page-dots \{\s*flex: 0 0 auto/.test(cssText))
 check('mobile: footer disembunyikan di HP', /\.footer \{\s*display: none/.test(cssText))

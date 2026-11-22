@@ -181,7 +181,7 @@ textarea:focus-visible {
    jadi sorotan selalu jatuh tepat di atas huruf "Aliansi". */
 .hero-inner {
   position: relative;
-  padding-top: 104px;
+  padding-top: clamp(140px, 18vh, 210px);
 }
 
 /* Kabel + kap lampu menggantung dari tengah atas. Satu sumber
@@ -1139,10 +1139,28 @@ textarea:focus-visible {
 
 /* ── Responsive ──────────────────────────────────────── */
 @media (max-width: 720px) {
+  /* Kunci seluruh dokumen ke satu layar — tidak ada scrollbar sama sekali. */
+  html,
+  body {
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  body {
+    min-height: 0;
+  }
+
+  #root {
+    height: 100%;
+  }
+
   .site {
     width: min(100% - 28px, 1120px);
     /* Satu layar utuh: header + halaman + dots, tanpa scroll. */
-    height: 100dvh;
+    height: 100%;
+    max-height: 100%;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -1154,6 +1172,18 @@ textarea:focus-visible {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+  }
+
+  /* Wrapper animasi dilewati supaya .page-view jadi anak langsung <main>
+     dan bisa mengisi sisa layar dengan tepat. */
+  .site > main > .reveal {
+    display: contents;
+  }
+
+  #root,
+  .site,
+  .site > main {
+    min-height: 0;
   }
 
   .topbar {
@@ -1192,7 +1222,8 @@ textarea:focus-visible {
   }
 
   .hero-inner {
-    padding-top: 84px;
+    /* Kabel + lampu punya ruang lega di atas judul — kesan mewah. */
+    padding-top: 150px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1224,12 +1255,13 @@ textarea:focus-visible {
     font-size: 27px;
   }
 
-  /* Halaman 2: tanpa judul ALIANSI, form mengisi layar. */
+  /* Halaman 2: tanpa judul ALIANSI, form mengisi layar.
+     Isi kotak diberi jeda lega antar sub — tidak menempel. */
   .composer {
     width: 100%;
     max-width: none;
     margin: 0;
-    padding: 18px;
+    padding: 26px 22px;
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
@@ -1249,20 +1281,25 @@ textarea:focus-visible {
     display: flex;
     flex-direction: column;
     min-height: 0;
+    gap: 4px;
   }
 
   .composer .field textarea {
-    min-height: 96px;
-    max-height: 22dvh;
+    min-height: 92px;
+    max-height: 20dvh;
   }
 
   .field {
-    margin-top: 12px;
+    margin-top: 22px;
+  }
+
+  .field:first-of-type {
+    margin-top: 4px;
   }
 
   .field input,
   .field textarea {
-    padding: 8px 0;
+    padding: 10px 0;
   }
 
   .title-input {
@@ -1275,29 +1312,29 @@ textarea:focus-visible {
 
   .field-row {
     grid-template-columns: 1fr;
-    gap: 2px;
+    gap: 18px;
   }
 
   .chips {
-    gap: 6px;
-    padding-top: 6px;
+    gap: 8px;
+    padding-top: 10px;
   }
 
   .chip {
-    padding: 7px 12px;
+    padding: 8px 14px;
     font-size: 11px;
   }
 
   .form-footer {
     align-items: stretch;
     flex-direction: column;
-    gap: 8px;
-    margin-top: 12px;
+    gap: 10px;
+    margin-top: 24px;
   }
 
   .primary-button {
     justify-content: center;
-    padding: 12px 20px;
+    padding: 13px 20px;
     font-size: 10px;
   }
 
@@ -1333,11 +1370,12 @@ textarea:focus-visible {
     display: none;
   }
 
-  /* Dots jadi bagian layout, nempel di bawah layar (bukan floating). */
+  /* Dots jadi bagian layout, duduk lebih rendah — beri jarak dari kotak form
+     tapi tetap di dalam layar supaya tidak ada scroll. */
   .page-dots {
     flex: 0 0 auto;
     margin: 0;
-    padding: 14px 0 18px;
+    padding: 26px 0 max(18px, env(safe-area-inset-bottom));
   }
 }
 

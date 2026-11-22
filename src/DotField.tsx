@@ -35,7 +35,6 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
     let height = 0
     let raf = 0
     let running = true
-    let tick = 0
     let intensity = 0
     let speed = 0
     const pointer = { x: -9999, y: -9999, prevX: -9999, prevY: -9999 }
@@ -77,18 +76,21 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
     }
     const speedTimer = window.setInterval(trackSpeed, 20)
 
+    const BUCKETS = 7
+    const baseAlpha = theme === 'dark' ? 0.035 : 0.03
+    const peakAlpha = theme === 'dark' ? 0.5 : 0.4
+
     const draw = () => {
       ctx.clearRect(0, 0, width, height)
-      tick += 1
 
       const dark = theme === 'dark'
       const gradient = ctx.createLinearGradient(0, 0, width, height)
       if (dark) {
-        gradient.addColorStop(0, 'rgba(243,239,231,0.85)')
-        gradient.addColorStop(1, 'rgba(201,168,106,0.42)')
+        gradient.addColorStop(0, 'rgba(243,239,231,0.9)')
+        gradient.addColorStop(1, 'rgba(201,168,106,0.55)')
       } else {
-        gradient.addColorStop(0, 'rgba(27,25,22,0.55)')
-        gradient.addColorStop(1, 'rgba(154,123,63,0.38)')
+        gradient.addColorStop(0, 'rgba(27,25,22,0.8)')
+        gradient.addColorStop(1, 'rgba(154,123,63,0.5)')
       }
       ctx.fillStyle = gradient
 
@@ -98,16 +100,18 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
 
       const radiusSquared = cursorRadius * cursorRadius
       const active = intensity > 0.01 && !reduced
+      const paths = Array.from({ length: BUCKETS }, () => new Path2D())
 
-      ctx.beginPath()
       for (const dot of dots) {
         const dx = pointer.x - dot.ax
         const dy = pointer.y - dot.ay
         const distanceSquared = dx * dx + dy * dy
+        let glow = 0
 
         if (active && distanceSquared < radiusSquared) {
           const distance = Math.sqrt(distanceSquared) || 0.001
           const close = 1 - distance / cursorRadius
+          glow = close * close * intensity
           const push = close * close * bulgeStrength * intensity
           const angle = Math.atan2(dy, dx)
           dot.sx += (dot.ax - Math.cos(angle) * push - dot.sx) * 0.16
@@ -117,10 +121,17 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
           dot.sy += (dot.ay - dot.sy) * 0.1
         }
 
-        ctx.moveTo(dot.sx + dotRadius, dot.sy)
-        ctx.arc(dot.sx, dot.sy, dotRadius, 0, Math.PI * 2)
+        const level = Math.min(BUCKETS - 1, Math.floor(glow * BUCKETS))
+        const path = paths[level]
+        path.moveTo(dot.sx + dotRadius, dot.sy)
+        path.arc(dot.sx, dot.sy, dotRadius, 0, Math.PI * 2)
       }
-      ctx.fill()
+
+      for (let level = 0; level < BUCKETS; level += 1) {
+        ctx.globalAlpha = baseAlpha + (level / (BUCKETS - 1)) * (peakAlpha - baseAlpha)
+        ctx.fill(paths[level])
+      }
+      ctx.globalAlpha = 1
     }
 
     const loop = () => {

@@ -93,6 +93,7 @@ textarea:focus-visible {
 }
 
 .topbar-brand {
+  grid-column: 1;
   justify-self: start;
   font-size: 10px;
   font-weight: 600;
@@ -120,6 +121,7 @@ textarea:focus-visible {
 }
 
 .theme-button {
+  grid-column: 3;
   justify-self: end;
   display: grid;
   place-items: center;
@@ -351,8 +353,8 @@ textarea:focus-visible {
   max-width: 100%;
   overflow: hidden;
   color: var(--faint);
-  font-family: var(--sans);
-  font-size: clamp(20px, 3vw, 30px);
+  font-family: var(--serif);
+  font-size: 17px;
   white-space: nowrap;
   text-overflow: ellipsis;
   pointer-events: none;
@@ -368,9 +370,10 @@ textarea:focus-visible {
 }
 
 .title-input {
-  font-size: clamp(20px, 3vw, 30px) !important;
+  font-family: var(--serif) !important;
+  font-size: 17px !important;
   font-weight: 500;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 .chips-field .field-label {
@@ -726,6 +729,7 @@ textarea:focus-visible {
 
 /* ── Drive status & modal ────────────────────────────── */
 .drive-button {
+  grid-column: 2;
   justify-self: center;
   display: inline-flex;
   align-items: center;
@@ -916,10 +920,10 @@ textarea:focus-visible {
 @media (max-width: 720px) {
   .site {
     width: min(100% - 28px, 1120px);
-    padding-bottom: 88px;
   }
 
   .topbar {
+    grid-template-columns: auto 1fr auto;
     padding: 16px 0 4px;
   }
 
@@ -927,8 +931,14 @@ textarea:focus-visible {
     display: none;
   }
 
-  .topbar-actions {
-    gap: 14px;
+  .drive-button {
+    grid-column: 1;
+    justify-self: start;
+  }
+
+  .theme-button {
+    grid-column: 3;
+    justify-self: end;
   }
 
   .hero {
@@ -964,11 +974,11 @@ textarea:focus-visible {
   }
 
   .title-input {
-    font-size: 23px !important;
+    font-size: 17px !important;
   }
 
   .input-placeholder {
-    font-size: 23px;
+    font-size: 17px;
   }
 
   .field-row {
@@ -1056,18 +1066,14 @@ textarea:focus-visible {
 }
 
 .page-dots {
-  position: fixed;
-  z-index: 40;
-  left: 50%;
-  bottom: max(12px, env(safe-area-inset-bottom));
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
-  padding: 8px 12px;
+  margin: 0 auto 26px;
+  padding: 0;
   border: 0;
   background: none;
-  box-shadow: none;
-  transform: translateX(-50%);
 }
 
 .page-dots button {

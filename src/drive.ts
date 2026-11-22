@@ -187,22 +187,25 @@ export function listEntries(url: string): Promise<Entry[]> {
 
 export async function addEntryRemote(url: string, entry: Entry): Promise<Entry> {
   const data = await post(url, { action: 'add', ...entry, ownerToken: getOwnerToken() })
+  listCache.delete(url) // data berubah — cache list tidak boleh basi
   return normalize(data.entry as Entry)
 }
 
 export async function deleteEntryRemote(url: string, id: string): Promise<void> {
   await post(url, { action: 'delete', id, ownerToken: getOwnerToken() })
+  listCache.delete(url)
 }
 
 /**
  * Edit = buat file baru dengan isi terbaru, lalu hapus file lama.
- * Cara ini jalan di script yang sudah ter-deploy (belum punya action 'update').
+ * PENTING: file lama baru dihapus SETELAH file baru berhasil dibuat —
+ * kalau gagal di tengah, cerita tidak mungkin hilang.
  */
 export async function updateEntryRemote(url: string, next: Entry): Promise<Entry> {
-  // Kirim tambah & hapus bersamaan supaya nggak nunggu dua round-trip berurutan.
-  const [saved] = await Promise.all([
-    addEntryRemote(url, { ...next, id: uid() }),
+  const saved = await addEntryRemote(url, { ...next, id: uid() })
+  // Hapus file lama di belakang layar; gagal sekali coba lagi sekali.
+  deleteEntryRemote(url, next.id).catch(() =>
     deleteEntryRemote(url, next.id).catch(() => undefined),
-  ])
+  )
   return saved
 }

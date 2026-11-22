@@ -1,0 +1,1 @@
+{"compilerOptions": {"jsx": "react-jsx", "module": "commonjs", "target": "es2022", "moduleResolution": "node", "esModuleInterop": true, "skipLibCheck": true, "outDir": "build"}, "files": ["entry.tsx"]}

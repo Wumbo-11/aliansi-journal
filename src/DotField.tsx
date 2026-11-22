@@ -41,6 +41,20 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
     let idleFrames = 0
     const pointer = { x: -9999, y: -9999, prevX: -9999, prevY: -9999, active: false }
 
+    // Gradient dibuat sekali per resize, bukan tiap frame — jauh lebih ringan.
+    let gradient: CanvasGradient | null = null
+    const makeGradient = () => {
+      const g = ctx.createLinearGradient(0, 0, width, height)
+      if (theme === 'dark') {
+        g.addColorStop(0, 'rgba(243,239,231,0.9)')
+        g.addColorStop(1, 'rgba(201,168,106,0.55)')
+      } else {
+        g.addColorStop(0, 'rgba(27,25,22,0.8)')
+        g.addColorStop(1, 'rgba(154,123,63,0.5)')
+      }
+      gradient = g
+    }
+
     const build = () => {
       width = window.innerWidth
       height = window.innerHeight
@@ -65,6 +79,7 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
           dots.push({ ax: x, ay: y, sx: x, sy: y })
         }
       }
+      makeGradient()
     }
 
     const trackSpeed = () => {
@@ -84,24 +99,17 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
 
     const draw = () => {
       ctx.clearRect(0, 0, width, height)
-      let motion = intensity > 0.001
-
-      const dark = theme === 'dark'
-      const gradient = ctx.createLinearGradient(0, 0, width, height)
-      if (dark) {
-        gradient.addColorStop(0, 'rgba(243,239,231,0.9)')
-        gradient.addColorStop(1, 'rgba(201,168,106,0.55)')
-      } else {
-        gradient.addColorStop(0, 'rgba(27,25,22,0.8)')
-        gradient.addColorStop(1, 'rgba(154,123,63,0.5)')
-      }
-      ctx.fillStyle = gradient
+      if (gradient) ctx.fillStyle = gradient
 
       // Di desktop kursor hampir selalu ada: beri respon dasar langsung,
       // kecepatan mouse cuma menambah kuatnya dorongan.
       const target = pointer.active ? Math.min(1, 0.5 + speed / 3) : 0
+      const previousIntensity = intensity
       intensity += (target - intensity) * 0.12
       if (intensity < 0.001) intensity = 0
+      // "Motion" = masih ada yang berubah secara terlihat. Kalau kursor diam
+      // dan dot sudah settles, loop berhenti total (0% CPU) sampai gerak lagi.
+      let motion = Math.abs(intensity - previousIntensity) > 0.002
 
       const radiusSquared = cursorRadius * cursorRadius
       const active = intensity > 0.01 && !reduced
@@ -113,22 +121,26 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
         const distanceSquared = dx * dx + dy * dy
         let glow = 0
 
+        let nextX = dot.sx
+        let nextY = dot.sy
         if (active && distanceSquared < radiusSquared) {
           const distance = Math.sqrt(distanceSquared) || 0.001
           const close = 1 - distance / cursorRadius
           glow = close * close * intensity
           const push = close * close * bulgeStrength * intensity
           const angle = Math.atan2(dy, dx)
-          dot.sx += (dot.ax - Math.cos(angle) * push - dot.sx) * 0.16
-          dot.sy += (dot.ay - Math.sin(angle) * push - dot.sy) * 0.16
+          nextX += (dot.ax - Math.cos(angle) * push - nextX) * 0.16
+          nextY += (dot.ay - Math.sin(angle) * push - nextY) * 0.16
         } else {
-          dot.sx += (dot.ax - dot.sx) * 0.1
-          dot.sy += (dot.ay - dot.sy) * 0.1
+          nextX += (dot.ax - nextX) * 0.1
+          nextY += (dot.ay - nextY) * 0.1
         }
 
-        if (Math.abs(dot.sx - dot.ax) > 0.15 || Math.abs(dot.sy - dot.ay) > 0.15) {
+        if (Math.abs(nextX - dot.sx) > 0.05 || Math.abs(nextY - dot.sy) > 0.05) {
           motion = true
         }
+        dot.sx = nextX
+        dot.sy = nextY
 
         const level = Math.min(BUCKETS - 1, Math.floor(glow * BUCKETS))
         const path = paths[level]
@@ -186,6 +198,7 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
       pointer.x = -9999
       pointer.y = -9999
       pointer.active = false
+      start() // animasikan peluruhan glow walau loop sedang idle
     }
     const onResize = () => {
       build()

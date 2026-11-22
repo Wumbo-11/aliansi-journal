@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode, TouchEvent } from 'react'
 import DotField from './DotField'
 import { CATEGORIES } from './types'
 import type { Category, Entry } from './types'
+import type { Draft } from './drive'
 import {
   addEntryRemote,
   clearDraft,
@@ -196,6 +197,33 @@ function TitleHint() {
   )
 }
 
+/**
+ * Autosave draf: ditulis ringan (debounce 250ms), tapi dipaksa tersimpan
+ * saat tab disembunyikan atau halaman ditutup — tulisan tidak mungkin hilang.
+ */
+function useDraftAutosave(draft: Draft, key?: string) {
+  const latest = useRef(draft)
+  latest.current = draft
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => writeDraft(latest.current, key), 250)
+    return () => window.clearTimeout(timer)
+  }, [draft.title, draft.author, draft.body, draft.category, key])
+
+  useEffect(() => {
+    const flush = () => writeDraft(latest.current, key)
+    const onVisibility = () => {
+      if (document.hidden) flush()
+    }
+    window.addEventListener('pagehide', flush)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [key])
+}
+
 function Composer({ onAdd }: { onAdd: (entry: Entry) => void }) {
   const [saved] = useState(readDraft)
   const [title, setTitle] = useState(saved.title)
@@ -204,10 +232,8 @@ function Composer({ onAdd }: { onAdd: (entry: Entry) => void }) {
   const [category, setCategory] = useState<Category>(saved.category)
   const [error, setError] = useState('')
 
-  // Simpan draf otomatis tiap kali mengetik — aman kalau web ditutup.
-  useEffect(() => {
-    writeDraft({ title, author, body, category })
-  }, [title, author, body, category])
+  // Simpan draf otomatis — aman kalau web ditutup kapan pun.
+  useDraftAutosave({ title, author, body, category })
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
@@ -332,9 +358,7 @@ function EditForm({
   const [category, setCategory] = useState<Category>(saved.category)
   const [error, setError] = useState('')
 
-  useEffect(() => {
-    writeDraft({ title, author, body, category }, draftKey)
-  }, [title, author, body, category, draftKey])
+  useDraftAutosave({ title, author, body, category }, draftKey)
 
   const save = (event: FormEvent) => {
     event.preventDefault()
@@ -580,6 +604,44 @@ export default function App() {
   )
   const [editingId, setEditingId] = useState<string | null>(null)
   const touchStart = useRef({ x: 0, y: 0 })
+  // Perubahan lokal terbaru (optimistik & yang baru selesai) diingat sampai
+  // list dari Drive mengonfirmasinya — supaya list basi tidak pernah
+  // menghapus/menduplikat cerita pengguna. Kedaluwarsa setelah 60 detik.
+  const pending = useRef({
+    adds: new Map<string, { entry: Entry; at: number }>(),
+    edits: new Map<string, { entry: Entry; at: number }>(),
+    deletes: new Map<string, number>(),
+  })
+
+  const mergePending = (list: Entry[]): Entry[] => {
+    const p = pending.current
+    const now = Date.now()
+    const known = new Set(list.map((entry) => entry.id))
+    for (const [key, rec] of p.adds) {
+      if (now - rec.at > 60000 || known.has(rec.entry.id)) p.adds.delete(key)
+    }
+    for (const [key, rec] of p.edits) {
+      if (now - rec.at > 60000 || known.has(rec.entry.id)) p.edits.delete(key)
+    }
+    for (const [id, at] of p.deletes) {
+      if (now - at > 60000 || !known.has(id)) p.deletes.delete(id)
+    }
+
+    let out = list.filter((entry) => !p.deletes.has(entry.id))
+    for (const [oldId, rec] of p.edits) {
+      out = out.map((entry) => (entry.id === oldId ? rec.entry : entry))
+    }
+    // Buang duplikat (mis. file lama & baru sama-sama muncul saat edit).
+    const seen = new Set<string>()
+    out = out.filter((entry) => (seen.has(entry.id) ? false : (seen.add(entry.id), true)))
+    for (const rec of p.adds.values()) {
+      if (!seen.has(rec.entry.id)) {
+        out = [rec.entry, ...out]
+        seen.add(rec.entry.id)
+      }
+    }
+    return out
+  }
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -607,8 +669,9 @@ export default function App() {
     listEntries(driveUrl)
       .then((list) => {
         if (cancelled) return
-        setEntries(list)
-        writeEntries(list)
+        const merged = mergePending(list)
+        setEntries(merged)
+        writeEntries(merged)
         setSyncError('')
       })
       .catch((error: unknown) => {
@@ -648,10 +711,23 @@ export default function App() {
     markOwned(entry.id)
     if (!driveUrl) return
 
+    pending.current.adds.set(entry.id, { entry, at: Date.now() })
     addEntryRemote(driveUrl, entry)
       .then((saved) => {
+        pending.current.adds.set(entry.id, { entry: saved, at: Date.now() })
+        // Kalau keburu dihapus pengguna saat masih terkirim, ikut hapus di Drive.
+        if (pending.current.deletes.has(entry.id)) {
+          pending.current.adds.delete(entry.id)
+          deleteEntryRemote(driveUrl, saved.id).catch(() => undefined)
+          return
+        }
         setEntries((current) => {
-          const next = current.map((item) => (item.id === entry.id ? saved : item))
+          const exists = current.some((item) => item.id === entry.id)
+          const next = exists
+            ? current.map((item) => (item.id === entry.id ? saved : item))
+            : current.some((item) => item.id === saved.id)
+              ? current
+              : [saved, ...current]
           writeEntries(next)
           return next
         })
@@ -660,6 +736,7 @@ export default function App() {
         setSyncError('')
       })
       .catch((error: unknown) => {
+        pending.current.adds.delete(entry.id)
         // Gagal? Batalkan perubahan optimistik supaya tampilan cocok dengan Drive.
         setEntries((current) => {
           const next = current.filter((item) => item.id !== entry.id)
@@ -681,9 +758,13 @@ export default function App() {
     unmarkOwned(id)
     if (!driveUrl) return
 
+    pending.current.deletes.set(id, Date.now())
     deleteEntryRemote(driveUrl, id)
-      .then(() => setSyncError(''))
+      .then(() => {
+        setSyncError('')
+      })
       .catch((error: unknown) => {
+        pending.current.deletes.delete(id)
         if (removed) {
           setEntries((current) => {
             const next = [removed, ...current]
@@ -710,10 +791,17 @@ export default function App() {
 
     if (!driveUrl) return
 
+    pending.current.edits.set(oldId, { entry: next, at: Date.now() })
     updateEntryRemote(driveUrl, next)
       .then((saved) => {
+        pending.current.edits.set(oldId, { entry: saved, at: Date.now() })
         setEntries((current) => {
-          const updated = current.map((entry) => (entry.id === oldId ? saved : entry))
+          const exists = current.some((entry) => entry.id === oldId)
+          const updated = exists
+            ? current.map((entry) => (entry.id === oldId ? saved : entry))
+            : current.some((entry) => entry.id === saved.id)
+              ? current
+              : [saved, ...current]
           writeEntries(updated)
           return updated
         })
@@ -722,6 +810,7 @@ export default function App() {
         setSyncError('')
       })
       .catch((error: unknown) => {
+        pending.current.edits.delete(oldId)
         if (previous) {
           setEntries((current) => {
             const restored = current.map((entry) => (entry.id === oldId ? previous : entry))

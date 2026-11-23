@@ -1682,6 +1682,17 @@ html[data-desktop-site="true"] .footer {
 html[data-desktop-site='true'] .site {
   width: calc(100vw / var(--desktop-zoom, 2.7));
   zoom: var(--desktop-zoom, 2.7);
+  /* Fullscreen melebarkan viewport ke layar fisik: tetap sisakan margin tipis
+     supaya konten tidak menempel ke tepi. */
+  max-width: calc(100vw / var(--desktop-zoom, 2.7) - 8px);
+  height: 100%;
+  max-height: 100%;
+}
+html[data-desktop-site='true'] .page-dots {
+  padding: 20px 0 max(16px, env(safe-area-inset-bottom));
+}
+html[data-desktop-site='true'] .entry-grid {
+  min-height: 0;
 }
 html[data-desktop-site='true'] .title-mark {
   font-size: 60px;
@@ -1714,6 +1725,59 @@ html[data-desktop-site='true'] .footer-wordmark {
    Dots sengaja tetap tampil supaya navigasi 3 halaman tidak hilang. ── */
 html[data-fullscreen='true'] .site {
   width: min(100% - 28px, 1600px);
+}
+
+/* Failsafe: browser HP yang melaporkan viewport lebar (mis. desktop site di
+   tablet) tetap satu layar — tidak ada scrollbar, dots tidak terpotong. */
+@media (pointer: coarse) {
+  html,
+  body {
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  #root {
+    height: 100%;
+  }
+
+  .site {
+    height: 100%;
+    max-height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .site > main {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .site > main > .reveal {
+    display: contents;
+  }
+
+  .page-view {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .page-dots {
+    flex: 0 0 auto;
+  }
+
+  .footer {
+    display: none;
+  }
 }
 
 html[data-fullscreen='true'] .topbar {

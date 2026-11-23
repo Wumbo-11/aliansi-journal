@@ -381,6 +381,8 @@ appRoot2.unmount()
 window.localStorage.clear()
 listDelay = 700
 listData = [{ id: 'other1', title: 'Komes', body: 'cerita orang', author: '', category: 'Cerita', createdAt: Date.now(), link: 'https://drive.google.com/file/d/OTHER1/view' }]
+// Wadah baru: sisa render lama tidak boleh numpuk di tes berikutnya.
+document.getElementById('app').innerHTML = ''
 const appRoot3 = mountApp(document.getElementById('app'))
 await sleep(60)
 setValue(document.querySelector('.title-input'), 'Cerita Race')
@@ -392,6 +394,7 @@ check('race: cerita baru tidak dihapus oleh list yang datang belakangan', titles
 const storedRace = JSON.parse(window.localStorage.getItem('aliansi-journal/v1') || '[]')
 check('race: keduanya tersimpan di lokal', storedRace.length === 2, `${storedRace.length} entri`)
 appRoot3.unmount()
+document.getElementById('app').innerHTML = ''
 
 // ================= TES 3b: NAVIGASI 3 HALAMAN (HP BIASA) =================
 const cssText = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
@@ -505,39 +508,63 @@ check('deteksi: touch + viewport lebar -> zoom aktif',
 check('cache: ?fresh=1 membersihkan service worker', mainText.includes("has('fresh')") && mainText.includes('getRegistrations') && mainText.includes('caches.delete'))
 
 // ================= TES 6: FULLSCREEN, LAYAR LEGA & SUARA =================
+const ambientSrc = readFileSync(new URL('../src/useAmbient.ts', import.meta.url), 'utf8')
+const fsSrc = readFileSync(new URL('../src/useFullscreen.ts', import.meta.url), 'utf8')
 const featureHost = document.createElement('div')
 document.body.appendChild(featureHost)
+// Isolasi: preferensi suara dari tes lain tidak boleh bocor.
+localStorage.removeItem('aliansi-sound')
+window.__oscCount = 0
+window.__played = 0
 const featureRoot = mountApp(featureHost)
 await sleep(140)
 const soundBtn = featureHost.querySelector('.sound-button')
 const fsBtn = featureHost.querySelector('.fullscreen-button')
 check('fitur: tombol suara & layar penuh tersedia', !!soundBtn && !!fsBtn)
-check('fitur: suara awal mati', soundBtn?.getAttribute('aria-label') === 'Nyalakan suara ambient')
+check('fitur: suara awal mati', soundBtn?.getAttribute('aria-label') === 'Nyalakan musik')
 
-// Klik 1 → ambient (generative). Klik 2 → live (streaming). Klik 3 → mati.
+// Klik 1 → ON (langsung bunyi). Klik 2 → OFF (langsung diam).
+// Tidak ada lagi "perlu 2x tekan" — satu klik langsung toggling.
 soundBtn?.click()
-await sleep(40)
-check('suara: klik 1 -> ambient', (window.__oscCount || 0) >= 4 &&
-  localStorage.getItem('aliansi-sound') === 'ambient', `osc=${window.__oscCount || 0}`)
+await sleep(20)
+check('suara: klik 1 -> label ON di klik yang sama',
+  soundBtn?.getAttribute('aria-label') === 'Matikan musik')
+check('suara: klik 1 -> ambient instan + stream diputar',
+  (window.__oscCount || 0) >= 4 && (window.__played || 0) >= 1 &&
+  localStorage.getItem('aliansi-sound') === 'live',
+  `osc=${window.__oscCount || 0} play=${window.__played || 0}`)
 soundBtn?.click()
-await sleep(620)
-check('suara: klik 2 -> radio live', (window.__played || 0) >= 1 &&
-  localStorage.getItem('aliansi-sound') === 'live', `play=${window.__played || 0}`)
+await sleep(20)
+check('suara: klik 2 -> label OFF di klik yang sama',
+  soundBtn?.getAttribute('aria-label') === 'Nyalakan musik')
+check('suara: klik 2 -> mati', localStorage.getItem('aliansi-sound') === 'off')
+
+// Klik beruntun cepat tetap sinkron (ganjil = ON, genap = OFF).
 soundBtn?.click()
-await sleep(620)
-check('suara: klik 3 -> mati & audio dijeda',
-  (window.__paused || 0) >= 1 && localStorage.getItem('aliansi-sound') === 'off')
+soundBtn?.click()
+soundBtn?.click()
+await sleep(30)
+check('suara: 3 klik beruntun -> ON & sinkron',
+  soundBtn?.getAttribute('aria-label') === 'Matikan musik' &&
+  localStorage.getItem('aliansi-sound') === 'live',
+  `label=${soundBtn?.getAttribute('aria-label')}`)
+soundBtn?.click()
+await sleep(20)
 
 // Fullscreen toggle
 fsBtn?.click()
-await sleep(60)
+await sleep(40)
 check('fullscreen: masuk -> atribut aktif', document.documentElement.dataset.fullscreen === 'true')
 fsBtn?.click()
-await sleep(60)
+await sleep(40)
 check('fullscreen: keluar -> atribut hilang', document.documentElement.dataset.fullscreen === undefined)
+
+// Graf audio dibangun sekali & selalu berjalan (tidak rebuild tiap toggle).
+check('suara: graf dibangun sekali (tanpa stop/start ulang)',
+  ambientSrc.includes('if (ctxRef.current && voicesRef.current.length) return ctxRef.current') &&
+  !/stopVoices\(\)[\s\S]{0,80}startAmbient\(\)/.test(ambientSrc))
 featureRoot.unmount()
 
-const ambientSrc = readFileSync(new URL('../src/useAmbient.ts', import.meta.url), 'utf8')
 check('suara: sumber live SomaFM Dronezone (ambient 24/7)',
   ambientSrc.includes('ice1.somafm.com/dronezone-128-mp3'))
 check('suara: generatif pakai Web Audio (tanpa file)',
@@ -547,21 +574,33 @@ check('suara: jeda otomatis saat tab tersembunyi',
 check('suara: preferensi tersimpan', ambientSrc.includes("localStorage.setItem(STORAGE_KEY"))
 check('suara: nyala ulang pada interaksi pertama (tidak autoplay)',
   ambientSrc.includes('pointerdown') && ambientSrc.includes('autoplay') &&
-  ambientSrc.includes('apply(saved, true)'))
+  ambientSrc.includes('apply(saved)'))
+check('suara: fade on/off sangat pendek (responsif)',
+  /const ON_FADE = 0\.0\d/.test(ambientSrc) && /const OFF_FADE = 0\.1\d/.test(ambientSrc))
+check('suara: toggle pakai ref (tidak ketinggalan satu klik)',
+  /const next: SoundMode = modeRef\.current === 'off' \? 'live' : 'off'/.test(ambientSrc) &&
+  /modeRef\.current = next\s*\n\s*setMode\(next\)/.test(ambientSrc))
 check('suara: live pakai jembatan ambient instan + crossfade saat playing',
-  /startAmbient\(\)[\s\S]*?audio\.addEventListener\('playing'/.test(ambientSrc) &&
-  ambientSrc.includes("preload = 'auto'") && ambientSrc.includes('const FAST_FADE = 0.12'))
-const fsSrc = readFileSync(new URL('../src/useFullscreen.ts', import.meta.url), 'utf8')
+  /fadeMaster\(AMBIENT_LEVEL, ON_FADE\)[\s\S]{0,600}?goLive\(\)/.test(ambientSrc) &&
+  /audio\.addEventListener\('playing'/.test(ambientSrc) &&
+  ambientSrc.includes("preload = 'auto'"))
+check('fullscreen: resync berlapis + ikut visualViewport',
+  /requestAnimationFrame\(resync\)/.test(fsSrc) &&
+  /dispatchEvent\(new window\.Event\('resize'\)\)/.test(fsSrc) &&
+  /visualViewport/.test(fsSrc) && /window\.scrollTo\(0, 0\)/.test(fsSrc))
 check('fullscreen: paksa reflow & reset scroll saat keluar',
-  /requestAnimationFrame\(\(\) => \{\s*requestAnimationFrame/.test(fsSrc) &&
-  /new window\.Event\('resize'\)/.test(fsSrc) &&
-  /window\.scrollTo\(0, 0\)/.test(fsSrc))
+  /requestAnimationFrame\(\(\) => \{\s*resync\(\)/.test(fsSrc))
 check('layout: desktop lebih lebar (1400px) & HP lebih lega (18px)',
   /width: min\(100% - 40px, 1400px\)/.test(cssText) &&
   /width: min\(100% - 18px, 1400px\)/.test(cssText))
 check('fullscreen: header transparan & dots tetap ada',
   /html\[data-fullscreen='true'\] \.topbar/.test(cssText) &&
   /html\[data-fullscreen='true'\] \.site/.test(cssText))
+check('layout: satu layar juga untuk viewport sentuh lebar (failsafe)',
+  /@media \(pointer: coarse\) \{[\s\S]*?max-height: 100dvh[\s\S]*?page-dots/.test(cssText))
+check('layout: desktop-site mode tetap satu layar di fullscreen',
+  /html\[data-desktop-site='true'\] \.site \{[\s\S]*?height: 100%;/.test(cssText))
+check('fitur: mount ulang cepat tanpa error console', problems.length === 0)
 
 // ================= HASIL =================
 const failed = results.filter((r) => !r.ok)

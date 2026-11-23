@@ -5,21 +5,26 @@ export type SoundMode = 'off' | 'ambient' | 'live'
 const STORAGE_KEY = 'aliansi-sound'
 // SomaFM Dronezone — ambient drone 24/7 (206 audio/mpeg, stabil).
 const STREAM_URL = 'https://ice1.somafm.com/dronezone-128-mp3'
-const ORDER: SoundMode[] = ['off', 'ambient', 'live']
-const AMBIENT_LEVEL = 0.075
+const AMBIENT_LEVEL = 0.11
 const LIVE_LEVEL = 0.45
-// Fade dibuat sangat pendek supaya tombol terasa responsif (langsung bunyi).
-const FAST_FADE = 0.12
+// Graf suara selalu berjalan; tombol hanya memindahkan gain.
+// Fade super pendek = ON/OFF terasa seketika, tanpa "klak".
+const ON_FADE = 0.06
+const OFF_FADE = 0.12
 
 type Voice = { osc: OscillatorNode; gain: GainNode }
 
 /**
- * Suara ambient: off → generative → radio live.
+ * Suara ambient: OFF → ON (live), ON → OFF. Satu tombol, toggle langsung.
  *
- * Kunci responsivitas: mode live TIDAK pernah menunggu buffering stream.
- * Generative ambient dinyalakan lebih dulu (langsung bunyi dari oscillator),
- * lalu stream di-crossfade begitu event `playing` fires. Kalau stream gagal,
- * ambient tetap terdengar — tidak ada jeda diam.
+ * Responsivitas:
+ *  - Graf audio dibangun sekali dan dibiarkan berjalan; tombol hanya
+ *    mengubah gain. Tidak ada rebuild/stop-start tiap klik.
+ *  - Mode live tidak menunggu buffering: ambient generatif langsung berbunyi,
+ *    lalu stream di-crossfade begitu event `playing` fires. Kalau stream gagal,
+ *    ambient tetap terdengar — tidak pernah ada jeda diam.
+ *  - Target mode disimpan di ref, jadi klik berturut-turut tidak pernah
+ *    "ketinggalan satu state" walau React belum selesai render.
  */
 export function useAmbient() {
   const [mode, setMode] = useState<SoundMode>(() => {
@@ -31,17 +36,15 @@ export function useAmbient() {
     }
   })
 
+  const modeRef = useRef<SoundMode>(mode)
   const ctxRef = useRef<AudioContext | null>(null)
   const masterRef = useRef<GainNode | null>(null)
   const filterRef = useRef<BiquadFilterNode | null>(null)
   const voicesRef = useRef<Voice[]>([])
   const lfoRef = useRef<OscillatorNode | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  const offTimer = useRef(0)
-  const volumeTimer = useRef(0)
   const unbindStream = useRef<(() => void) | null>(null)
-  const modeRef = useRef(mode)
-  modeRef.current = mode
+  const volumeTimer = useRef(0)
 
   const fadeMaster = (to: number, seconds: number) => {
     const ctx = ctxRef.current
@@ -53,30 +56,31 @@ export function useAmbient() {
     master.gain.linearRampToValueAtTime(to, now + seconds)
   }
 
-  const ensureContext = () => {
-    if (ctxRef.current) return ctxRef.current
-    const Ctor = window.AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-    if (!Ctor) return null
-    const ctx = new Ctor()
-    const master = ctx.createGain()
-    master.gain.value = 0
-    const filter = ctx.createBiquadFilter()
-    filter.type = 'lowpass'
-    filter.frequency.value = 900
-    filter.Q.value = 0.6
-    filter.connect(master)
-    master.connect(ctx.destination)
-    ctxRef.current = ctx
-    masterRef.current = master
-    filterRef.current = filter
-    return ctx
-  }
+  /** Bangun graf sekali saja; setelah itu selalu hidup (gain yang menutupnya). */
+  const ensureGraph = () => {
+    if (ctxRef.current && voicesRef.current.length) return ctxRef.current
+    let ctx = ctxRef.current
+    if (!ctx) {
+      const Ctor = window.AudioContext ||
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+      if (!Ctor) return null
+      ctx = new Ctor()
+      const master = ctx.createGain()
+      master.gain.value = 0
+      const filter = ctx.createBiquadFilter()
+      filter.type = 'lowpass'
+      filter.frequency.value = 900
+      filter.Q.value = 0.6
+      filter.connect(master)
+      master.connect(ctx.destination)
+      ctxRef.current = ctx
+      masterRef.current = master
+      filterRef.current = filter
+    }
+    if (voicesRef.current.length) return ctx
 
-  const buildVoices = () => {
-    const ctx = ctxRef.current
     const filter = filterRef.current
-    if (!ctx || !filter || voicesRef.current.length) return
+    if (!filter) return ctx
 
     const specs = [
       { f: 55, g: 0.16 },
@@ -89,6 +93,7 @@ export function useAmbient() {
     const lfoDepth = ctx.createGain()
     lfoDepth.gain.value = 0.018
     lfo.connect(lfoDepth)
+    lfo.start()
 
     for (const spec of specs) {
       const osc = ctx.createOscillator()
@@ -103,40 +108,8 @@ export function useAmbient() {
       osc.start()
       voicesRef.current.push({ osc, gain })
     }
-    lfo.start()
     lfoRef.current = lfo
-  }
-
-  const stopVoices = () => {
-    for (const voice of voicesRef.current) {
-      try {
-        voice.osc.stop()
-        voice.osc.disconnect()
-        voice.gain.disconnect()
-      } catch { /* sudah berhenti */ }
-    }
-    voicesRef.current = []
-    try {
-      lfoRef.current?.stop()
-      lfoRef.current?.disconnect()
-    } catch { /* sudah berhenti */ }
-    lfoRef.current = null
-  }
-
-  /** Ambient langsung bunyi — dipakai juga sebagai jembatan saat live buffering. */
-  const startAmbient = (seconds = FAST_FADE) => {
-    window.clearTimeout(offTimer.current)
-    const ctx = ensureContext()
-    if (!ctx) return
-    void ctx.resume().catch(() => {})
-    buildVoices()
-    fadeMaster(AMBIENT_LEVEL, seconds)
-  }
-
-  const stopAmbient = (seconds = 0.3) => {
-    fadeMaster(0, seconds)
-    window.clearTimeout(offTimer.current)
-    offTimer.current = window.setTimeout(stopVoices, seconds * 1000 + 60)
+    return ctx
   }
 
   const rampVolume = (audio: HTMLAudioElement, to: number, ms: number) => {
@@ -154,49 +127,51 @@ export function useAmbient() {
     if (audioRef.current) return audioRef.current
     const audio = document.createElement('audio')
     audio.src = STREAM_URL
-    audio.preload = 'auto' // mulai buffering lebih awal
+    audio.preload = 'auto'
     audio.volume = 0
     audio.setAttribute('playsinline', '')
     audioRef.current = audio
     return audio
   }
 
-  const stopAudio = (ms = 300) => {
+  const goLive = () => {
+    const audio = ensureAudio()
     unbindStream.current?.()
-    const audio = audioRef.current
-    if (!audio) return
-    rampVolume(audio, 0, ms)
-    offTimer.current = window.setTimeout(() => {
-      try { audio.pause() } catch { /* noop */ }
-    }, ms + 40)
+    const onPlaying = () => {
+      // Stream sudah berbunyi → lepas jembatan ambient, naikkan stream.
+      fadeMaster(0, 0.4)
+      rampVolume(audio, LIVE_LEVEL, 500)
+      unbindStream.current?.()
+    }
+    audio.addEventListener('playing', onPlaying)
+    unbindStream.current = () => audio.removeEventListener('playing', onPlaying)
+    try {
+      void audio.play().catch(() => {})
+    } catch { /* browser/blocked environment */ }
   }
 
-  const apply = useCallback((next: SoundMode, force = false) => {
-    const previous = modeRef.current
-    if (next === previous && !force) return
-    window.clearTimeout(offTimer.current)
+  const goQuiet = () => {
+    unbindStream.current?.()
+    const audio = audioRef.current
+    if (audio) rampVolume(audio, 0, 160)
+  }
 
-    if (next === 'ambient') {
-      stopAudio(250)
-      startAmbient()
-    } else if (next === 'live') {
-      // Jembatan instan: ambient dulu, stream menyusul saat siap.
-      startAmbient()
-      const audio = ensureAudio()
-      unbindStream.current?.()
-      const onPlaying = () => {
-        fadeMaster(0, 0.45)
-        rampVolume(audio, LIVE_LEVEL, 500)
-        unbindStream.current?.()
-      }
-      audio.addEventListener('playing', onPlaying)
-      unbindStream.current = () => audio.removeEventListener('playing', onPlaying)
-      try {
-        void audio.play().catch(() => {})
-      } catch { /* browser/blocked environment */ }
+  /** Terapkan mode baru. `unlock` = dipicu interaksi pengguna. */
+  const apply = useCallback((next: SoundMode, unlock = true) => {
+    const ctx = ensureGraph()
+    if (!ctx) return
+    if (unlock && ctx.state !== 'running') {
+      void ctx.resume().catch(() => {})
+    }
+
+    if (next === 'off') {
+      fadeMaster(0, OFF_FADE)
+      goQuiet()
     } else {
-      stopAmbient(250)
-      stopAudio(250)
+      // Ambient langsung berbunyi (juga sebagai jembatan mode live).
+      fadeMaster(AMBIENT_LEVEL, ON_FADE)
+      if (next === 'live') goLive()
+      else goQuiet()
     }
 
     modeRef.current = next
@@ -204,24 +179,28 @@ export function useAmbient() {
     try { localStorage.setItem(STORAGE_KEY, next) } catch { /* private mode */ }
   }, [])
 
-  const cycle = useCallback(() => {
-    const current = ORDER.indexOf(modeRef.current)
-    apply(ORDER[(current + 1) % ORDER.length])
+  /** Satu tombol: OFF → ON (live) → OFF. Langsung merespons di klik yang sama. */
+  const toggle = useCallback(() => {
+    const next: SoundMode = modeRef.current === 'off' ? 'live' : 'off'
+    modeRef.current = next
+    setMode(next)
+    try { localStorage.setItem(STORAGE_KEY, next) } catch { /* private mode */ }
+    apply(next)
   }, [apply])
 
   useEffect(() => {
     // Browser melarang autoplay sebelum interaksi. Kalau pengguna punya
-    // preferensi "ambient/live" dari kunjungan sebelumnya, nyalakan ulang
-    // pada sentuhan/ketukan PERTAMA — bukan saat halaman baru dimuat.
+    // preferensi ON dari kunjungan sebelumnya, nyalakan ulang pada sentuhan
+    // pertama — bukan saat halaman baru dimuat.
     if (modeRef.current === 'off') return
     const unlock = (event: Event) => {
       const target = event.target as HTMLElement | null
       if (target?.closest?.('.sound-button')) return
-      const saved = modeRef.current
       document.removeEventListener('pointerdown', unlock, true)
       document.removeEventListener('keydown', unlock, true)
+      const saved = modeRef.current
       modeRef.current = 'off'
-      apply(saved, true)
+      apply(saved)
     }
     document.addEventListener('pointerdown', unlock, true)
     document.addEventListener('keydown', unlock, true)
@@ -237,17 +216,29 @@ export function useAmbient() {
         void ctxRef.current?.suspend().catch(() => {})
         try { audioRef.current?.pause() } catch { /* noop */ }
       } else if (modeRef.current !== 'off') {
-        // Aktifkan ulang lewat jalur yang sama (jembatan ambient + stream).
-        apply(modeRef.current, true)
+        void ctxRef.current?.resume().catch(() => {})
+        if (modeRef.current === 'live') goLive()
+        else fadeMaster(AMBIENT_LEVEL, ON_FADE)
       }
     }
     document.addEventListener('visibilitychange', onVisibility)
     return () => {
       document.removeEventListener('visibilitychange', onVisibility)
-      window.clearTimeout(offTimer.current)
       window.clearInterval(volumeTimer.current)
       unbindStream.current?.()
-      stopVoices()
+      for (const voice of voicesRef.current) {
+        try {
+          voice.osc.stop()
+          voice.osc.disconnect()
+          voice.gain.disconnect()
+        } catch { /* sudah berhenti */ }
+      }
+      voicesRef.current = []
+      try {
+        lfoRef.current?.stop()
+        lfoRef.current?.disconnect()
+      } catch { /* sudah berhenti */ }
+      lfoRef.current = null
       try { audioRef.current?.pause() } catch { /* noop */ }
       void ctxRef.current?.close().catch(() => {})
       ctxRef.current = null
@@ -255,19 +246,20 @@ export function useAmbient() {
       filterRef.current = null
       audioRef.current = null
     }
-  }, [apply])
+  }, [])
 
-  return { mode, cycle }
+  // Alias `cycle` dipakai App (nama lama), sekarang perilakunya toggle ON/OFF.
+  return { mode, cycle: toggle }
 }
 
 export const SOUND_TITLES: Record<SoundMode, string> = {
-  off: 'Suara mati · klik untuk ambient',
-  ambient: 'Ambient · klik untuk radio live',
-  live: 'Radio live · klik untuk matikan',
+  off: 'Suara mati · klik untuk menyalakan musik',
+  live: 'Musik menyala · klik untuk mematikan',
+  ambient: 'Ambient · klik untuk mematikan',
 }
 
 export const SOUND_LABELS: Record<SoundMode, string> = {
-  off: 'Nyalakan suara ambient',
-  ambient: 'Ganti ke radio live',
-  live: 'Matikan suara',
+  off: 'Nyalakan musik',
+  live: 'Matikan musik',
+  ambient: 'Matikan musik',
 }

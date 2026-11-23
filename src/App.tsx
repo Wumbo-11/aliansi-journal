@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, ReactNode, TouchEvent } from 'react'
 import DotField from './DotField'
 import HangingLamp from './HangingLamp'
+import { SOUND_LABELS, SOUND_TITLES, useAmbient } from './useAmbient'
+import { useFullscreen } from './useFullscreen'
 import { CATEGORIES } from './types'
 import type { Category, Entry } from './types'
 import type { Draft } from './drive'
@@ -74,6 +76,50 @@ function MoonIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
       <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z" />
+    </svg>
+  )
+}
+
+function SoundOffIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+      <path d="M4 9v6h4l5 4V5L8 9H4Z" />
+      <path d="m17 9 4 6M21 9l-4 6" />
+    </svg>
+  )
+}
+
+function SoundAmbientIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+      <path d="M4 9v6h4l5 4V5L8 9H4Z" />
+      <path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11" />
+    </svg>
+  )
+}
+
+function SoundLiveIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+      <path d="M4 9v6h4l5 4V5L8 9H4Z" />
+      <path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" />
+      <circle cx="14" cy="12" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+function FullscreenIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+      <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />
+    </svg>
+  )
+}
+
+function FullscreenExitIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+      <path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5" />
     </svg>
   )
 }
@@ -651,6 +697,8 @@ export default function App() {
   const [page, setPage] = useState<'welcome' | 'compose' | 'archive'>('welcome')
   const [isMobile, setIsMobile] = useState(isCompactView)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const { mode: soundMode, cycle: cycleSound } = useAmbient()
+  const { active: fullscreen, supported: fullscreenSupported, toggle: toggleFullscreen } = useFullscreen()
   const touchStart = useRef({ x: 0, y: 0 })
   // Perubahan lokal terbaru (optimistik & yang baru selesai) diingat sampai
   // list dari Drive mengonfirmasinya — supaya list basi tidak pernah
@@ -693,12 +741,17 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
+    if (fullscreen) document.documentElement.dataset.fullscreen = 'true'
+    else delete document.documentElement.dataset.fullscreen
     localStorage.setItem(THEME_KEY, theme)
     document.querySelector('meta[name="theme-color"]')?.setAttribute(
       'content',
       theme === 'dark' ? '#0d0d0f' : '#f6f3ed',
     )
-  }, [theme])
+    return () => {
+      delete document.documentElement.dataset.fullscreen
+    }
+  }, [theme, fullscreen])
 
   useEffect(() => {
     const queryMobile = window.matchMedia('(max-width: 720px)')
@@ -957,15 +1010,37 @@ export default function App() {
           <span className={`status-dot${driveUrl ? (syncError ? ' is-error' : ' is-on') : ''}`} />
           Drive
         </button>
-        <button
-          type="button"
-          className="theme-button"
-          onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
-          aria-label={theme === 'dark' ? 'Ganti ke tema terang' : 'Ganti ke tema gelap'}
-          title={theme === 'dark' ? 'Tema terang' : 'Tema gelap'}
-        >
-          {theme === 'dark' ? <MoonIcon /> : <SunIcon />}
-        </button>
+        <div className="header-actions">
+          <button
+            type="button"
+            className={`theme-button sound-button${soundMode !== 'off' ? ' is-on' : ''}`}
+            onClick={cycleSound}
+            aria-label={SOUND_LABELS[soundMode]}
+            title={SOUND_TITLES[soundMode]}
+          >
+            {soundMode === 'off' ? <SoundOffIcon /> :
+              soundMode === 'ambient' ? <SoundAmbientIcon /> : <SoundLiveIcon />}
+          </button>
+          <button
+            type="button"
+            className="theme-button fullscreen-button"
+            onClick={toggleFullscreen}
+            disabled={!fullscreenSupported}
+            aria-label={fullscreen ? 'Keluar dari layar penuh' : 'Masuk layar penuh'}
+            title={fullscreen ? 'Keluar layar penuh' : 'Layar penuh'}
+          >
+            {fullscreen ? <FullscreenExitIcon /> : <FullscreenIcon />}
+          </button>
+          <button
+            type="button"
+            className="theme-button"
+            onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+            aria-label={theme === 'dark' ? 'Ganti ke tema terang' : 'Ganti ke tema gelap'}
+            title={theme === 'dark' ? 'Tema terang' : 'Tema gelap'}
+          >
+            {theme === 'dark' ? <MoonIcon /> : <SunIcon />}
+          </button>
+        </div>
       </header>
 
       <main>

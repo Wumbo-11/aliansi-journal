@@ -81,7 +81,7 @@ textarea:focus-visible {
 .site {
   position: relative;
   z-index: 1;
-  width: min(100% - 40px, 1120px);
+  width: min(100% - 40px, 1400px);
   margin: 0 auto;
 }
 
@@ -148,9 +148,15 @@ textarea:focus-visible {
   color: var(--accent);
 }
 
-.theme-button {
+.header-actions {
   grid-column: 3;
   justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.theme-button {
   display: grid;
   place-items: center;
   padding: 6px;
@@ -164,9 +170,18 @@ textarea:focus-visible {
   opacity: 0.65;
 }
 
+.theme-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 .theme-button svg {
   width: 19px;
   height: 19px;
+}
+
+.sound-button.is-on {
+  color: var(--text);
 }
 
 /* ── Hero ────────────────────────────────────────────── */
@@ -1189,7 +1204,7 @@ textarea:focus-visible {
   }
 
   .site {
-    width: min(100% - 28px, 1120px);
+    width: min(100% - 18px, 1400px);
     /* Satu layar utuh: header + halaman + dots, tanpa scroll. */
     height: 100%;
     max-height: 100%;
@@ -1233,9 +1248,19 @@ textarea:focus-visible {
     justify-self: start;
   }
 
-  .theme-button {
+  .header-actions {
     grid-column: 3;
     justify-self: end;
+    gap: 0;
+  }
+
+  .theme-button {
+    padding: 6px 5px;
+  }
+
+  .theme-button svg {
+    width: 18px;
+    height: 18px;
   }
 
   /* Setiap halaman mengisi sisa layar, konten di tengah. */
@@ -1532,7 +1557,7 @@ textarea:focus-visible {
    lalu zoom wadah itu supaya teks terbaca. Mode HP biasa TIDAK kena ini. ── */
 
 html[data-desktop-site="true"] .site {
-  width: min(100% - 28px, 1120px);
+  width: min(100% - 18px, 1400px);
 }
 
 html[data-desktop-site="true"] .topbar {
@@ -1549,9 +1574,10 @@ html[data-desktop-site="true"] .drive-button {
   justify-self: start;
 }
 
-html[data-desktop-site="true"] .theme-button {
+html[data-desktop-site="true"] .header-actions {
   grid-column: 3;
   justify-self: end;
+  gap: 0;
 }
 
 html[data-desktop-site='true'] .hero {
@@ -1681,4 +1707,34 @@ html[data-desktop-site='true'] .hero-subtitle {
 }
 html[data-desktop-site='true'] .footer-wordmark {
   font-size: 52px;
+}
+
+/* ── Mode layar penuh (Web Fullscreen API) ──────────────────────
+   Header jadi tipis & transparan, konten memakai seluruh layar.
+   Dots sengaja tetap tampil supaya navigasi 3 halaman tidak hilang. ── */
+html[data-fullscreen='true'] .site {
+  width: min(100% - 28px, 1600px);
+}
+
+html[data-fullscreen='true'] .topbar {
+  padding: 10px 0 0;
+  background: transparent;
+}
+
+html[data-fullscreen='true'] .theme-button {
+  opacity: 0.75;
+}
+
+html[data-fullscreen='true'] .hero-inner {
+  padding-top: clamp(120px, 15vh, 190px);
+}
+
+@media (max-width: 720px) {
+  html[data-fullscreen='true'] .site {
+    width: min(100% - 12px, 1600px);
+  }
+
+  html[data-fullscreen='true'] .topbar {
+    padding: 6px 0 0;
+  }
 }

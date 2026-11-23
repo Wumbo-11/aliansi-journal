@@ -29,6 +29,48 @@ define('MouseEvent', window.MouseEvent)
 define('Event', window.Event)
 define('getComputedStyle', window.getComputedStyle.bind(window))
 define('localStorage', window.localStorage)
+
+// Mock media & Web Audio supaya fitur suara bisa diuji (jsdom tidak punya keduanya).
+window.HTMLMediaElement.prototype.play = function () { window.__played = (window.__played || 0) + 1; return Promise.resolve() }
+window.HTMLMediaElement.prototype.pause = function () { window.__paused = (window.__paused || 0) + 1 }
+const audioParam = () => ({
+  value: 0,
+  cancelScheduledValues() {},
+  setValueAtTime() {},
+  linearRampToValueAtTime() {},
+})
+const connectable = () => ({ connect() {}, disconnect() {} })
+class FakeAudioContext {
+  currentTime = 0
+  destination = connectable()
+  state = 'running'
+  static count = 0
+  constructor() { FakeAudioContext.count += 1 }
+  createGain() { return { ...connectable(), gain: audioParam() } }
+  createBiquadFilter() { return { ...connectable(), type: 'lowpass', frequency: { value: 0 }, Q: { value: 0 } } }
+  createOscillator() {
+    window.__oscCount = (window.__oscCount || 0) + 1
+    return { ...connectable(), type: 'sine', frequency: { value: 0 }, detune: { value: 0 }, start() {}, stop() {} }
+  }
+  resume() { this.state = 'running'; return Promise.resolve() }
+  suspend() { this.state = 'suspended'; return Promise.resolve() }
+  close() { return Promise.resolve() }
+}
+define('AudioContext', FakeAudioContext)
+window.AudioContext = FakeAudioContext
+
+// Mock Fullscreen API.
+document.fullscreenElement = null
+document.documentElement.requestFullscreen = function () {
+  document.fullscreenElement = document.documentElement
+  document.dispatchEvent(new window.Event('fullscreenchange'))
+  return Promise.resolve()
+}
+document.exitFullscreen = function () {
+  document.fullscreenElement = null
+  document.dispatchEvent(new window.Event('fullscreenchange'))
+  return Promise.resolve()
+}
 define('requestAnimationFrame', window.requestAnimationFrame.bind(window))
 define('cancelAnimationFrame', window.cancelAnimationFrame.bind(window))
 window.devicePixelRatio = 1
@@ -461,6 +503,57 @@ check('deteksi: touch + viewport lebar -> zoom aktif',
   cssText.includes("html[data-desktop-site='true'] .entry-body") &&
   htmlText.includes('Newsreader'))
 check('cache: ?fresh=1 membersihkan service worker', mainText.includes("has('fresh')") && mainText.includes('getRegistrations') && mainText.includes('caches.delete'))
+
+// ================= TES 6: FULLSCREEN, LAYAR LEGA & SUARA =================
+const featureHost = document.createElement('div')
+document.body.appendChild(featureHost)
+const featureRoot = mountApp(featureHost)
+await sleep(140)
+const soundBtn = featureHost.querySelector('.sound-button')
+const fsBtn = featureHost.querySelector('.fullscreen-button')
+check('fitur: tombol suara & layar penuh tersedia', !!soundBtn && !!fsBtn)
+check('fitur: suara awal mati', soundBtn?.getAttribute('aria-label') === 'Nyalakan suara ambient')
+
+// Klik 1 → ambient (generative). Klik 2 → live (streaming). Klik 3 → mati.
+soundBtn?.click()
+await sleep(40)
+check('suara: klik 1 -> ambient', (window.__oscCount || 0) >= 4 &&
+  localStorage.getItem('aliansi-sound') === 'ambient', `osc=${window.__oscCount || 0}`)
+soundBtn?.click()
+await sleep(620)
+check('suara: klik 2 -> radio live', (window.__played || 0) >= 1 &&
+  localStorage.getItem('aliansi-sound') === 'live', `play=${window.__played || 0}`)
+soundBtn?.click()
+await sleep(620)
+check('suara: klik 3 -> mati & audio dijeda',
+  (window.__paused || 0) >= 1 && localStorage.getItem('aliansi-sound') === 'off')
+
+// Fullscreen toggle
+fsBtn?.click()
+await sleep(60)
+check('fullscreen: masuk -> atribut aktif', document.documentElement.dataset.fullscreen === 'true')
+fsBtn?.click()
+await sleep(60)
+check('fullscreen: keluar -> atribut hilang', document.documentElement.dataset.fullscreen === undefined)
+featureRoot.unmount()
+
+const ambientSrc = readFileSync(new URL('../src/useAmbient.ts', import.meta.url), 'utf8')
+check('suara: sumber live SomaFM Dronezone (ambient 24/7)',
+  ambientSrc.includes('ice1.somafm.com/dronezone-128-mp3'))
+check('suara: generatif pakai Web Audio (tanpa file)',
+  ambientSrc.includes('createOscillator') && ambientSrc.includes('createBiquadFilter'))
+check('suara: jeda otomatis saat tab tersembunyi',
+  ambientSrc.includes('document.hidden') && ambientSrc.includes('suspend()'))
+check('suara: preferensi tersimpan', ambientSrc.includes("localStorage.setItem(STORAGE_KEY"))
+check('suara: nyala ulang pada interaksi pertama (tidak autoplay)',
+  ambientSrc.includes('pointerdown') && ambientSrc.includes('autoplay') &&
+  ambientSrc.includes('apply(saved, true)'))
+check('layout: desktop lebih lebar (1400px) & HP lebih lega (18px)',
+  /width: min\(100% - 40px, 1400px\)/.test(cssText) &&
+  /width: min\(100% - 18px, 1400px\)/.test(cssText))
+check('fullscreen: header transparan & dots tetap ada',
+  /html\[data-fullscreen='true'\] \.topbar/.test(cssText) &&
+  /html\[data-fullscreen='true'\] \.site/.test(cssText))
 
 // ================= HASIL =================
 const failed = results.filter((r) => !r.ok)

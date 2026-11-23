@@ -1,0 +1,8 @@
+{
+  "appId": "com.antigem.aliansi",
+  "appName": "Aliansi — Ruang Cerita",
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": true
+  }
+}

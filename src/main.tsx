@@ -4,9 +4,12 @@ import { registerSW } from 'virtual:pwa-register'
 import App from './App'
 import './styles.css'
 
+// Di APK (Capacitor) aset sudah lokal — SW cuma bikin cache base dan bikin update nggak kebaca.
+const isNative = Boolean((window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.())
+
 // ?fresh=1 → buang service worker & cache lama, lalu reload tanpa parameter.
 // Berguna kalau browser masih menyajikan build lama dari cache.
-if (new URLSearchParams(window.location.search).has('fresh')) {
+if (!isNative && new URLSearchParams(window.location.search).has('fresh')) {
   const clean = new URL(window.location.href)
   clean.searchParams.delete('fresh')
   void (async () => {
@@ -33,7 +36,7 @@ if (new URLSearchParams(window.location.search).has('fresh')) {
     })
   }
 
-  registerSW({ immediate: true })
+  if (!isNative) registerSW({ immediate: true })
 
   createRoot(document.getElementById('root')!).render(
     <StrictMode>

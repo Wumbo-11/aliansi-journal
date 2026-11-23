@@ -1,211 +1,263 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 
-// Jari-jari = panjang kabel. Pusat kap lampu SELALU sejauh ini dari titik
-// gantung, ke arah mana pun (lingkaran penuh, bukan busur pendek).
-const R = 76
-// Jarak pusat kap ke leher (tempat kabel menyambung), searah sumbu kap.
-const NECK = 26
-// Batas ayun ~143°: bebas ke samping & agak ke atas, tapi tidak menutupi header.
-const MAX_A = 2.5
-const REST_EPS = 0.0015
+/**
+ * Lampu gantung "ragdoll": kabel adalah rantai 8 ruas yang disimulasikan
+ * dengan Verlet integration. Setiap ruas panjangnya TETAP (= segmen), jadi
+ * kabel tidak pernah memanjang, tapi bisa melengkung/menggantung seperti
+ * tali asli saat lampu ditarik ke segala arah.
+ *
+ * - Titik pertama rantai (titik gantung) DIKUNCI.
+ * - Titik terakhir = kap lampu. Saat drag, titik ini diikuti jari (1:1),
+ *   dan rantai lainnya menyusul dengan gerakan melengkung yang halus.
+ * - Tidak ada atan2/snap: kap lampu mengikuti posisi jari langsung, jadi
+ *   tidak ada lompatan di bagian atas (bedanya dengan versi sudut).
+ * - Kap lampu menunduk mengikuti arah ruas terakhir kabel → bohlam selalu
+ *   menjauhi titik gantung, tidak terkunci ke bawah.
+ * - Render di overlay full-screen (bukan di dalam hero yang overflow:hidden)
+ *   supaya lampu tidak pernah terpotong di atas.
+ */
+const SEGMENTS = 8
+const SEG = 76 / SEGMENTS // panjang tiap ruas → total kabel tetap 76
+const ITER = 12 // iterasi constraint → rantai kaku tapi tetap lentur
+const REST_EPS = 0.05
+const MAX_REACH = 280 // jangkauan maksimum kap dari titik gantung
+
+type XY = { x: number; y: number }
+type Pt = XY & { px: number; py: number }
 
 const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v)
 
-/**
- * Lampu gantung model bandul 2D penuh — seperti bola di ujung tali:
- *
- *  - Titik gantung TETAP.
- *  - Pusat kap lampu selalu berada di lingkaran berjari-jari R dari titik
- *    gantung. Mau ditarik ke kiri, kanan, atas, bawah, atau miring 1° —
- *    jaraknya tetap R. Kabel tidak pernah memanjang.
- *  - Kap lampu menunduk mengikuti arah kabel: leher selalu menghadap titik
- *    gantung, bohlam menjauhinya. Tidak pernah terkunci ke bawah.
- *  - Kabel = SATU garis lurus kontinyu dari titik gantung ke leher kap.
- *    Tidak ada sambungan yang putus di tengah.
- *  - Drag presisi: sudut lampu = sudut jari relatif titik gantung (+ offset
- *    grab supaya tidak melompat saat disentuh). 1° jari = 1° lampu.
- *  - Lepas → pegas teredam kembali ke posisi diam dengan ayunan lembut.
- *
- * Performa: geometri diukur sekali, commit() hanya menulis saat berubah,
- * pointer di-coalesce per frame, tanpa state React saat drag.
- */
 export default function HangingLamp() {
-  const rigRef = useRef<HTMLDivElement>(null)
-  const headRef = useRef<HTMLDivElement>(null)
-  const cableRef = useRef<SVGPathElement>(null)
+  const overlayRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
+  const pathRef = useRef<SVGPathElement>(null)
+  const headRef = useRef<HTMLDivElement>(null)
   const textRef = useRef<HTMLElement | null>(null)
 
-  // Sudut dari vertikal ke bawah: 0 = bawah, + = kanan, - = kiri, ±pi = atas.
-  const theta = useRef(0)
-  const vel = useRef(0)
+  const pts = useRef<Pt[]>(
+    Array.from({ length: SEGMENTS + 1 }, (_, i) => ({
+      x: 0, y: i * SEG, px: 0, py: i * SEG,
+    })),
+  )
+  const anchor = useRef<Pt>({ x: 0, y: 0, px: 0, py: 0 })
   const dragging = useRef(false)
   const raf = useRef(0)
   const lastTime = useRef(0)
-  const grabAngle = useRef(0)
-
-  const geo = useRef({
-    ax: 0, width: 0, height: 0, originLeft: 0, originTop: 0, zoom: 1,
-    textLeft: 0, textWidth: 1, ready: false,
-  })
-  const last = useRef({ transform: '', d: '', rel: NaN })
-  const pending = useRef<{ x: number; y: number } | null>(null)
-  const frameQueued = useRef(false)
+  const target = useRef<XY | null>(null) // posisi jari (viewport) saat drag
+  const releaseTarget = useRef<XY | null>(null)
+  const initialized = useRef(false)
+  const last = useRef({ d: '', transform: '', rel: NaN })
 
   const measure = () => {
-    const rig = rigRef.current
-    const hero = rig?.parentElement
-    if (!rig || !hero) return
-    const rect = rig.getBoundingClientRect()
-    const zoom = Number.parseFloat(window.getComputedStyle(hero).zoom) || 1
-    const width = rect.width / zoom || hero.clientWidth || window.innerWidth || 360
-    const height = rect.height / zoom || window.innerHeight || 640
-
-    const text = hero.querySelector('.title-mark-text') as HTMLElement | null
-    let textLeft = 0
-    let textWidth = width
-    if (text) {
-      const tr = text.getBoundingClientRect()
-      textLeft = (tr.left - rect.left) / zoom
-      textWidth = tr.width / zoom || width
-    }
-
+    const hero = document.querySelector('.hero-inner') as HTMLElement | null
+    const text = document.querySelector('.title-mark-text') as HTMLElement | null
     textRef.current = text
-    geo.current = {
-      ax: width / 2, width, height,
-      originLeft: rect.left, originTop: rect.top, zoom,
-      textLeft, textWidth, ready: width > 0,
+    const heroRect = hero?.getBoundingClientRect()
+    const zoom = heroRect
+      ? Number.parseFloat(window.getComputedStyle(hero).zoom) || 1
+      : 1
+    // Titik gantung: tengah hero-inner, di atas judul.
+    const ax = heroRect && heroRect.width > 0
+      ? (heroRect.left + heroRect.width / 2) / zoom
+      : window.innerWidth / 2
+    const ay = heroRect && heroRect.top > 0 ? heroRect.top / zoom + 10 : 190
+    anchor.current = { x: ax, y: ay, px: ax, py: ay }
+
+    if (!initialized.current) {
+      pts.current = Array.from({ length: SEGMENTS + 1 }, (_, i) => ({
+        x: ax, y: ay + i * SEG, px: ax, py: ay + i * SEG,
+      }))
+      initialized.current = true
     }
-    svgRef.current?.setAttribute('viewBox', `0 0 ${width.toFixed(2)} ${height.toFixed(2)}`)
-    last.current = { transform: '', d: '', rel: NaN }
+    svgRef.current?.setAttribute('viewBox', `0 0 ${window.innerWidth} ${window.innerHeight}`)
+    last.current = { d: '', transform: '', rel: NaN }
   }
 
-  /** Sudut jari terhadap titik gantung (0 = bawah, + = kanan). */
-  const pointerAngle = (clientX: number, clientY: number) => {
-    const { ax, originLeft, originTop, zoom } = geo.current
-    const dx = clientX / zoom - originLeft - ax
-    const dy = clientY / zoom - originTop
-    return Math.atan2(dx, dy)
+  /** Paksa ujung kabel tetap di jari, dan batasi jangkauan total. */
+  const constrain = () => {
+    const p = pts.current
+    const a = anchor.current
+    p[0].x = a.x
+    p[0].y = a.y
+
+    // Batasi jangkauan kap (biar tidak keluar layar / menimpa teks).
+    const lastPt = p[SEGMENTS]
+    if (target.current) {
+      const dx = target.current.x - a.x
+      const dy = target.current.y - a.y
+      const d = Math.hypot(dx, dy) || 1
+      const scale = d > MAX_REACH ? MAX_REACH / d : 1
+      lastPt.x = a.x + dx * scale
+      lastPt.y = a.y + dy * scale
+      lastPt.px = lastPt.x
+      lastPt.py = lastPt.y
+    } else if (releaseTarget.current) {
+      const lp = p[SEGMENTS]
+      lp.x = releaseTarget.current.x
+      lp.y = releaseTarget.current.y
+      lp.px = lp.x
+      lp.py = lp.y
+    }
+
+    // Verlet: setiap ruas dipaksa sepanjang SEG.
+    for (let k = 0; k < ITER; k++) {
+      p[0].x = a.x
+      p[0].y = a.y
+      for (let i = 0; i < SEGMENTS; i++) {
+        const one = p[i]
+        const two = p[i + 1]
+        const dx = two.x - one.x
+        const dy = two.y - one.y
+        const d = Math.hypot(dx, dy) || 1
+        const diff = (d - SEG) / d
+        // Titik gantung tidak bisa digeser; kap lampu tidak bisa digeser saat drag.
+        const lockOne = i === 0
+        const lockTwo = i + 1 === SEGMENTS && (dragging.current || !!releaseTarget.current)
+        if (!lockOne && !lockTwo) {
+          one.x += dx * diff * 0.5
+          one.y += dy * diff * 0.5
+          two.x -= dx * diff * 0.5
+          two.y -= dy * diff * 0.5
+        } else if (lockOne && !lockTwo) {
+          two.x -= dx * diff
+          two.y -= dy * diff
+        } else if (!lockOne && lockTwo) {
+          one.x += dx * diff
+          one.y += dy * diff
+        }
+      }
+      p[0].x = a.x
+      p[0].y = a.y
+      if (target.current) {
+        const lp = p[SEGMENTS]
+        lp.x = target.current.x
+        lp.y = target.current.y
+        lp.px = lp.x
+        lp.py = lp.y
+      }
+    }
   }
 
   const commit = () => {
+    const path = pathRef.current
     const head = headRef.current
-    const path = cableRef.current
-    if (!head || !path) return
-    const { ax, textLeft, textWidth } = geo.current
-    const th = theta.current
-    const sin = Math.sin(th)
-    const cos = Math.cos(th)
+    if (!path || !head) return
+    const p = pts.current
+    const cap = p[SEGMENTS]
+    const neck = p[SEGMENTS - 1]
 
-    // Pusat kap: selalu di lingkaran jari-jari R dari titik gantung.
-    const x = ax + R * sin
-    const y = R * cos
-    // Leher kap = pusat dikurangi NECK searah kabel (menghadap titik gantung).
-    const neckX = x - NECK * sin
-    const neckY = y - NECK * cos
-
-    // Kabel: SATU garis lurus, dari titik gantung langsung ke leher kap.
-    // Tidak ada kurva/trail yang bisa membuat sambungan tampak putus.
-    const d = `M ${ax.toFixed(2)} 0 L ${neckX.toFixed(2)} ${neckY.toFixed(2)}`
+    // Kabel = kurva halus lewat semua titik rantai (satu path kontinyu).
+    // Pakai quadratic smooth antar titik → tidak ada sambungan yang putus.
+    let d = `M ${p[0].x.toFixed(2)} ${p[0].y.toFixed(2)}`
+    for (let i = 1; i < SEGMENTS; i++) {
+      const mx = (p[i].x + p[i + 1].x) / 2
+      const my = (p[i].y + p[i + 1].y) / 2
+      d += ` Q ${p[i].x.toFixed(2)} ${p[i].y.toFixed(2)} ${mx.toFixed(2)} ${my.toFixed(2)}`
+    }
+    d += ` L ${neck.x.toFixed(2)} ${neck.y.toFixed(2)}`
     if (d !== last.current.d) {
       path.setAttribute('d', d)
       last.current.d = d
     }
 
-    // Kap lampu menunduk mengikuti arah kabel: rotasi = -th.
-    // Leher (0,-NECK) setelah rotate(-th) = (x - NECK*sin, y - NECK*cos)
-    // → tepat sama dengan ujung kabel di atas. Sambungannya kontinyu.
-    const rot = ` rotate(${(-th).toFixed(4)}rad)`
+    // Kap menunduk mengikuti arah ruas terakhir (leher → kap).
+    const dx = cap.x - neck.x
+    const dy = cap.y - neck.y
+    const ang = Math.atan2(-dx, dy)
+    const rot = ` rotate(${ang.toFixed(4)}rad)`
     const transform =
-      `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0) translate(-50%, -50%)${rot}`
+      `translate3d(${cap.x.toFixed(2)}px, ${cap.y.toFixed(2)}px, 0) translate(-50%, -50%)${rot}`
     if (transform !== last.current.transform) {
       head.style.transform = transform
       last.current.transform = transform
     }
 
-    // Sorotan di huruf mengikuti posisi X lampu.
-    const rel = ((x - textLeft) / textWidth) * 100
-    if (rel !== last.current.rel) {
-      ;(textRef.current ?? head).style.setProperty('--lamp-rel', `${rel.toFixed(2)}%`)
-      last.current.rel = rel
+    // Sorotan judul mengikuti X kap.
+    const text = textRef.current
+    if (text) {
+      const tr = text.getBoundingClientRect()
+      const rel = ((cap.x - tr.left) / tr.width) * 100
+      if (rel !== last.current.rel) {
+        text.style.setProperty('--lamp-rel', `${clamp(rel, -200, 300).toFixed(2)}%`)
+        last.current.rel = rel
+      }
     }
   }
 
-  const queueFrame = () => {
-    if (frameQueued.current) return
-    frameQueued.current = true
-    raf.current = requestAnimationFrame(() => {
-      frameQueued.current = false
-      const point = pending.current
-      if (point) {
-        if (!geo.current.ready) measure()
-        theta.current = clamp(pointerAngle(point.x, point.y) + grabAngle.current, -MAX_A, MAX_A)
-        pending.current = null
-      }
-      commit()
-    })
+  const step = (now: number) => {
+    lastTime.current = now
+    const p = pts.current
+    const gravity = 0.32
+    const damping = 0.99
+
+    // Verlet integration tiap titik (kecuali titik gantung).
+    for (let i = 1; i < SEGMENTS; i++) {
+      const pt = p[i]
+      const vx = (pt.x - pt.px) * damping
+      const vy = (pt.y - pt.py) * damping
+      pt.px = pt.x
+      pt.py = pt.y
+      pt.x += vx
+      pt.y += vy + gravity
+    }
+    // Ujung kabel: ikut jari saat drag, atau jatuh bebas saat dilepas.
+    const cap = p[SEGMENTS]
+    if (target.current) {
+      cap.px = cap.x
+      cap.py = cap.y
+      cap.x = target.current.x
+      cap.y = target.current.y
+    } else {
+      const vx = (cap.x - cap.px) * damping
+      const vy = (cap.y - cap.py) * damping
+      cap.px = cap.x
+      cap.py = cap.y
+      cap.x += vx
+      cap.y += vy + gravity
+    }
+
+    constrain()
+    commit()
+
+    // Tetap jalan saat masih bergerak / masih ditarik / belum turun.
+    const moving = p.some((pt) => Math.abs(pt.x - pt.px) > REST_EPS || Math.abs(pt.y - pt.py) > REST_EPS)
+    if (dragging.current || target.current || moving) {
+      raf.current = requestAnimationFrame(step)
+    } else {
+      raf.current = 0
+      lastTime.current = 0
+    }
   }
 
-  const settle = () => {
-    cancelAnimationFrame(raf.current)
-    frameQueued.current = false
-    lastTime.current = 0
-    const rig = rigRef.current
-    rig?.classList.add('is-swinging')
-    const step = (now: number) => {
-      const dt = lastTime.current ? Math.min(2, (now - lastTime.current) / 16.667) : 1
-      lastTime.current = now
-      vel.current = (vel.current - theta.current * 0.012 * dt) * Math.pow(0.95, dt)
-      theta.current += vel.current * dt
-      commit()
-      if (Math.abs(theta.current) > REST_EPS || Math.abs(vel.current) > REST_EPS) {
-        raf.current = requestAnimationFrame(step)
-      } else {
-        theta.current = 0
-        vel.current = 0
-        commit()
-        rig?.classList.remove('is-swinging')
-      }
+  const start = () => {
+    if (!raf.current) {
+      lastTime.current = 0
+      raf.current = requestAnimationFrame(step)
     }
-    raf.current = requestAnimationFrame(step)
   }
 
   useLayoutEffect(() => {
     measure()
     commit()
+    start()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const fonts = (document as any).fonts
     fonts?.ready?.then(() => {
       measure()
-      commit()
+      start()
     })
-
-    let resizeObserver: ResizeObserver | null = null
-    const hero = rigRef.current?.parentElement
-    const text = hero?.querySelector('.title-mark-text') as HTMLElement | null
-    if (text && typeof ResizeObserver !== 'undefined') {
-      resizeObserver = new ResizeObserver(() => {
-        measure()
-        commit()
-      })
-      resizeObserver.observe(text)
-    }
-
-    let resizeRaf = 0
     const onResize = () => {
-      cancelAnimationFrame(resizeRaf)
-      resizeRaf = requestAnimationFrame(() => {
-        measure()
-        commit()
-      })
+      cancelAnimationFrame(raf.current)
+      raf.current = 0
+      measure()
+      start()
     }
     window.addEventListener('resize', onResize, { passive: true })
     window.addEventListener('orientationchange', onResize, { passive: true })
     return () => {
       cancelAnimationFrame(raf.current)
-      cancelAnimationFrame(resizeRaf)
-      resizeObserver?.disconnect()
+      raf.current = 0
       window.removeEventListener('resize', onResize)
       window.removeEventListener('orientationchange', onResize)
     }
@@ -214,15 +266,18 @@ export default function HangingLamp() {
   useEffect(() => {
     const onMove = (event: PointerEvent) => {
       if (!dragging.current) return
-      pending.current = { x: event.clientX, y: event.clientY }
-      queueFrame()
+      target.current = { x: event.clientX, y: event.clientY }
+      releaseTarget.current = null
+      start()
     }
     const release = () => {
       if (!dragging.current) return
       dragging.current = false
-      pending.current = null
-      rigRef.current?.classList.remove('is-dragging')
-      settle()
+      // Lepaskan target jari → ujung kabel jatuh bebas & berayun.
+      target.current = null
+      releaseTarget.current = null
+      overlayRef.current?.classList.remove('is-dragging')
+      start()
     }
     window.addEventListener('pointermove', onMove, { passive: true })
     window.addEventListener('pointerup', release)
@@ -241,52 +296,43 @@ export default function HangingLamp() {
     try {
       head.setPointerCapture(event.pointerId)
     } catch {
-      /* pointer capture tidak tersedia — pointermove global tetap dipakai. */
+      /* abaikan */
     }
     measure()
-    // Offset sudut: lampu tidak melompat saat jari menekan kap di sembarang titik.
-    grabAngle.current = theta.current - pointerAngle(event.clientX, event.clientY)
     dragging.current = true
-    vel.current = 0
-    cancelAnimationFrame(raf.current)
-    frameQueued.current = false
-    lastTime.current = 0
-    rigRef.current?.classList.remove('is-swinging')
-    rigRef.current?.classList.add('is-dragging')
-    commit()
+    target.current = { x: event.clientX, y: event.clientY }
+    releaseTarget.current = null
+    overlayRef.current?.classList.add('is-dragging')
+    start()
     event.preventDefault()
   }
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    const step = event.shiftKey ? 0.12 : 0.035 // ~2° / ~7°
+    const stepPx = event.shiftKey ? 20 : 8
+    const cap = pts.current[SEGMENTS]
     if (event.key === 'Home') {
-      cancelAnimationFrame(raf.current)
-      theta.current = 0
-      vel.current = 0
+      measure()
+      pts.current = Array.from({ length: SEGMENTS + 1 }, (_, i) => ({
+        x: anchor.current.x, y: anchor.current.y + i * SEG,
+        px: anchor.current.x, py: anchor.current.y + i * SEG,
+      }))
       commit()
-    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-      cancelAnimationFrame(raf.current)
-      theta.current = clamp(
-        theta.current + (event.key === 'ArrowLeft' ? -step : step), -MAX_A, MAX_A,
-      )
-      commit()
-    } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-      // Atas = dekat vertikal (0), bawah = menjauh ke samping maksimal.
-      cancelAnimationFrame(raf.current)
-      const dir = event.key === 'ArrowUp' ? -1 : 1
-      const sign = theta.current < 0 ? -1 : 1
-      theta.current = clamp(theta.current + dir * step * sign, -MAX_A, MAX_A)
-      commit()
-    } else {
       return
     }
+    if (event.key === 'ArrowLeft') cap.x -= stepPx
+    else if (event.key === 'ArrowRight') cap.x += stepPx
+    else if (event.key === 'ArrowUp') cap.y -= stepPx
+    else if (event.key === 'ArrowDown') cap.y += stepPx
+    else return
     event.preventDefault()
+    target.current = { x: cap.x, y: cap.y }
+    start()
   }
 
   return (
-    <div ref={rigRef} className="lamp-rig">
+    <div ref={overlayRef} className="lamp-overlay">
       <svg ref={svgRef} className="lamp-cable" aria-hidden="true">
-        <path ref={cableRef} className="lamp-cable-path" />
+        <path ref={pathRef} className="lamp-cable-path" />
       </svg>
       <div
         ref={headRef}

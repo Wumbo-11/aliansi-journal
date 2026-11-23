@@ -209,19 +209,21 @@ textarea:focus-visible {
   padding-top: clamp(140px, 18vh, 210px);
 }
 
-/* Panggung lampu: menutupi seluruh hero-inner sebagai kanvas tempat kabel
-   digambar, tapi transparan terhadap sentuhan — hanya kap lampu yang bisa
-   disentuh. Posisi isinya murni diatur JS lewat transform (GPU, tanpa reflow). */
-.lamp-rig {
-  position: absolute;
-  z-index: 4;
+/* Overlay lampu: fixed seluruh layar, lewat dari `.site` yang overflow:hidden
+   → lampu tidak pernah terpotong di atas maupun di tepi. Transparan terhadap
+   sentuhan; hanya kap lampu yang bisa ditarik. */
+.lamp-overlay {
+  position: fixed;
+  z-index: 5;
   inset: 0;
-  width: 100%;
-  height: 100%;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  overflow: visible;
   pointer-events: none;
 }
 
-/* Kabel: kurva dari titik gantung tetap ke kap lampu. */
+/* Kabel: satu path kontinyu hasil simulasi rantai (ragdoll). */
 .lamp-cable {
   position: absolute;
   inset: 0;
@@ -231,15 +233,15 @@ textarea:focus-visible {
   pointer-events: none;
 }
 
-/* Lebar garis selalu tetap (non-scaling) → kabel tidak pernah terlihat
-   melar walau ditarik jauh. */
+/* Lebar garis tetap → tidak pernah terlihat melar. Tidak ada dash → tidak
+   ada sambungan yang tampak putus. */
 .lamp-cable-path {
   fill: none;
   stroke: #514c44;
   stroke-width: 1.4;
   stroke-linecap: round;
+  stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
-  /* Kabel = satu garis lurus kontinyu, sambungannya tidak boleh putus. */
   stroke-dasharray: none;
 }
 
@@ -266,12 +268,8 @@ textarea:focus-visible {
   border-radius: 50%;
 }
 
-.lamp-rig.is-dragging .lamp-head {
+.lamp-overlay.is-dragging .lamp-head {
   cursor: grabbing;
-  will-change: transform;
-}
-
-.lamp-rig.is-swinging .lamp-head {
   will-change: transform;
 }
 

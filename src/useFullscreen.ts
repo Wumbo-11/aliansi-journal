@@ -7,9 +7,26 @@ export function useFullscreen() {
     !!document.documentElement.requestFullscreen
 
   useEffect(() => {
-    const sync = () => setActive(!!document.fullscreenElement)
+    const sync = () => {
+      const next = !!document.fullscreenElement
+      setActive(next)
+
+      // Chrome Android mengubah tinggi viewport saat address bar muncul lagi.
+      // Tanpa paksaan ini, layout sempat "nggak ke-refresh" dan menyisakan
+      // area hitam kosong di atas header setelah keluar fullscreen.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (!next && window.scrollY > 0) window.scrollTo(0, 0)
+          window.dispatchEvent(new window.Event('resize'))
+        })
+      })
+    }
     document.addEventListener('fullscreenchange', sync)
-    return () => document.removeEventListener('fullscreenchange', sync)
+    document.addEventListener('webkitfullscreenchange', sync)
+    return () => {
+      document.removeEventListener('fullscreenchange', sync)
+      document.removeEventListener('webkitfullscreenchange', sync)
+    }
   }, [])
 
   const toggle = useCallback(() => {

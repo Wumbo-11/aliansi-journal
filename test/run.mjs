@@ -548,6 +548,14 @@ check('suara: preferensi tersimpan', ambientSrc.includes("localStorage.setItem(S
 check('suara: nyala ulang pada interaksi pertama (tidak autoplay)',
   ambientSrc.includes('pointerdown') && ambientSrc.includes('autoplay') &&
   ambientSrc.includes('apply(saved, true)'))
+check('suara: live pakai jembatan ambient instan + crossfade saat playing',
+  /startAmbient\(\)[\s\S]*?audio\.addEventListener\('playing'/.test(ambientSrc) &&
+  ambientSrc.includes("preload = 'auto'") && ambientSrc.includes('const FAST_FADE = 0.12'))
+const fsSrc = readFileSync(new URL('../src/useFullscreen.ts', import.meta.url), 'utf8')
+check('fullscreen: paksa reflow & reset scroll saat keluar',
+  /requestAnimationFrame\(\(\) => \{\s*requestAnimationFrame/.test(fsSrc) &&
+  /new window\.Event\('resize'\)/.test(fsSrc) &&
+  /window\.scrollTo\(0, 0\)/.test(fsSrc))
 check('layout: desktop lebih lebar (1400px) & HP lebih lega (18px)',
   /width: min\(100% - 40px, 1400px\)/.test(cssText) &&
   /width: min\(100% - 18px, 1400px\)/.test(cssText))

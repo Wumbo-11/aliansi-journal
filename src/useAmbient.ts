@@ -8,10 +8,19 @@ const STREAM_URL = 'https://ice1.somafm.com/dronezone-128-mp3'
 const ORDER: SoundMode[] = ['off', 'ambient', 'live']
 const AMBIENT_LEVEL = 0.075
 const LIVE_LEVEL = 0.45
+// Fade dibuat sangat pendek supaya tombol terasa responsif (langsung bunyi).
+const FAST_FADE = 0.12
 
 type Voice = { osc: OscillatorNode; gain: GainNode }
 
-/** Suara ambient: gradasi off → generative → radio live, tanpa file audio. */
+/**
+ * Suara ambient: off → generative → radio live.
+ *
+ * Kunci responsivitas: mode live TIDAK pernah menunggu buffering stream.
+ * Generative ambient dinyalakan lebih dulu (langsung bunyi dari oscillator),
+ * lalu stream di-crossfade begitu event `playing` fires. Kalau stream gagal,
+ * ambient tetap terdengar — tidak ada jeda diam.
+ */
 export function useAmbient() {
   const [mode, setMode] = useState<SoundMode>(() => {
     try {
@@ -28,18 +37,20 @@ export function useAmbient() {
   const voicesRef = useRef<Voice[]>([])
   const lfoRef = useRef<OscillatorNode | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  const switchTimer = useRef(0)
+  const offTimer = useRef(0)
   const volumeTimer = useRef(0)
+  const unbindStream = useRef<(() => void) | null>(null)
   const modeRef = useRef(mode)
   modeRef.current = mode
 
-  const rampParam = (param: AudioParam, to: number, seconds: number) => {
+  const fadeMaster = (to: number, seconds: number) => {
     const ctx = ctxRef.current
-    if (!ctx) return
+    const master = masterRef.current
+    if (!ctx || !master) return
     const now = ctx.currentTime
-    param.cancelScheduledValues(now)
-    param.setValueAtTime(param.value, now)
-    param.linearRampToValueAtTime(to, now + seconds)
+    master.gain.cancelScheduledValues(now)
+    master.gain.setValueAtTime(master.gain.value, now)
+    master.gain.linearRampToValueAtTime(to, now + seconds)
   }
 
   const ensureContext = () => {
@@ -67,8 +78,6 @@ export function useAmbient() {
     const filter = filterRef.current
     if (!ctx || !filter || voicesRef.current.length) return
 
-    // Empat sine rendah dan beri LFO sangat pelan → pad hangat yang "hidup",
-    // tapi tetap murah (4 oscillator, tanpa buffer/file).
     const specs = [
       { f: 55, g: 0.16 },
       { f: 110, g: 0.13 },
@@ -114,6 +123,22 @@ export function useAmbient() {
     lfoRef.current = null
   }
 
+  /** Ambient langsung bunyi — dipakai juga sebagai jembatan saat live buffering. */
+  const startAmbient = (seconds = FAST_FADE) => {
+    window.clearTimeout(offTimer.current)
+    const ctx = ensureContext()
+    if (!ctx) return
+    void ctx.resume().catch(() => {})
+    buildVoices()
+    fadeMaster(AMBIENT_LEVEL, seconds)
+  }
+
+  const stopAmbient = (seconds = 0.3) => {
+    fadeMaster(0, seconds)
+    window.clearTimeout(offTimer.current)
+    offTimer.current = window.setTimeout(stopVoices, seconds * 1000 + 60)
+  }
+
   const rampVolume = (audio: HTMLAudioElement, to: number, ms: number) => {
     window.clearInterval(volumeTimer.current)
     const from = audio.volume
@@ -122,56 +147,56 @@ export function useAmbient() {
       const t = Math.min(1, (Date.now() - started) / ms)
       audio.volume = from + (to - from) * t
       if (t >= 1) window.clearInterval(volumeTimer.current)
-    }, 40)
+    }, 30)
   }
 
   const ensureAudio = () => {
     if (audioRef.current) return audioRef.current
     const audio = document.createElement('audio')
     audio.src = STREAM_URL
-    audio.loop = true
-    audio.preload = 'none'
+    audio.preload = 'auto' // mulai buffering lebih awal
     audio.volume = 0
     audio.setAttribute('playsinline', '')
     audioRef.current = audio
     return audio
   }
 
+  const stopAudio = (ms = 300) => {
+    unbindStream.current?.()
+    const audio = audioRef.current
+    if (!audio) return
+    rampVolume(audio, 0, ms)
+    offTimer.current = window.setTimeout(() => {
+      try { audio.pause() } catch { /* noop */ }
+    }, ms + 40)
+  }
+
   const apply = useCallback((next: SoundMode, force = false) => {
     const previous = modeRef.current
     if (next === previous && !force) return
-    window.clearTimeout(switchTimer.current)
-
-    if (previous === 'ambient' && masterRef.current) {
-      rampParam(masterRef.current.gain, 0, 0.45)
-    }
-    if (previous === 'live' && audioRef.current) {
-      rampVolume(audioRef.current, 0, 400)
-    }
+    window.clearTimeout(offTimer.current)
 
     if (next === 'ambient') {
-      const ctx = ensureContext()
-      if (ctx) {
-        void ctx.resume().catch(() => {})
-        buildVoices()
-        if (masterRef.current) rampParam(masterRef.current.gain, AMBIENT_LEVEL, 1.2)
-      }
+      stopAudio(250)
+      startAmbient()
     } else if (next === 'live') {
-      switchTimer.current = window.setTimeout(() => {
-        stopVoices()
-        const audio = ensureAudio()
-        try {
-          void audio.play().catch(() => {})
-        } catch { /* browser/blocked environment */ }
-        rampVolume(audio, LIVE_LEVEL, 1200)
-      }, previous === 'ambient' ? 500 : 0)
+      // Jembatan instan: ambient dulu, stream menyusul saat siap.
+      startAmbient()
+      const audio = ensureAudio()
+      unbindStream.current?.()
+      const onPlaying = () => {
+        fadeMaster(0, 0.45)
+        rampVolume(audio, LIVE_LEVEL, 500)
+        unbindStream.current?.()
+      }
+      audio.addEventListener('playing', onPlaying)
+      unbindStream.current = () => audio.removeEventListener('playing', onPlaying)
+      try {
+        void audio.play().catch(() => {})
+      } catch { /* browser/blocked environment */ }
     } else {
-      switchTimer.current = window.setTimeout(() => {
-        stopVoices()
-        if (audioRef.current) {
-          try { audioRef.current.pause() } catch { /* noop */ }
-        }
-      }, 550)
+      stopAmbient(250)
+      stopAudio(250)
     }
 
     modeRef.current = next
@@ -191,7 +216,6 @@ export function useAmbient() {
     if (modeRef.current === 'off') return
     const unlock = (event: Event) => {
       const target = event.target as HTMLElement | null
-      // Biarkan tombol suara menangani kliknya sendiri (cycle).
       if (target?.closest?.('.sound-button')) return
       const saved = modeRef.current
       document.removeEventListener('pointerdown', unlock, true)
@@ -212,17 +236,17 @@ export function useAmbient() {
       if (document.hidden) {
         void ctxRef.current?.suspend().catch(() => {})
         try { audioRef.current?.pause() } catch { /* noop */ }
-      } else if (modeRef.current === 'ambient') {
-        void ctxRef.current?.resume().catch(() => {})
-      } else if (modeRef.current === 'live' && audioRef.current) {
-        try { void audioRef.current.play().catch(() => {}) } catch { /* noop */ }
+      } else if (modeRef.current !== 'off') {
+        // Aktifkan ulang lewat jalur yang sama (jembatan ambient + stream).
+        apply(modeRef.current, true)
       }
     }
     document.addEventListener('visibilitychange', onVisibility)
     return () => {
       document.removeEventListener('visibilitychange', onVisibility)
-      window.clearTimeout(switchTimer.current)
+      window.clearTimeout(offTimer.current)
       window.clearInterval(volumeTimer.current)
+      unbindStream.current?.()
       stopVoices()
       try { audioRef.current?.pause() } catch { /* noop */ }
       void ctxRef.current?.close().catch(() => {})
@@ -231,7 +255,7 @@ export function useAmbient() {
       filterRef.current = null
       audioRef.current = null
     }
-  }, [])
+  }, [apply])
 
   return { mode, cycle }
 }

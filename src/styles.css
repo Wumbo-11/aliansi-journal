@@ -3,6 +3,7 @@
   --bg: #0d0d0f;
   --panel-opacity: 1;
   --lamp-glow: 0;
+  --title-lit: 1;
   --bg-glow: rgba(201, 168, 106, 0.055);
   --surface: #141416;
   --text: #f3efe7;
@@ -382,14 +383,17 @@ textarea:focus-visible {
      dihitung JS dari posisi bola lampu vs bounding box span.
    Ellipse dibuat jauh lebih besar dari glyph supaya transisi
    terang→gelap mulus (tidak ada batas putus/patah di tengah huruf). */
+  /* --title-lit (0..1): 1 = lampu di bawah (terang), 0 = lampu ditarik ke
+     atas → semua stop jadi warna redup, jadi judul tidak ikut menyala. */
+  --title-dim: #6b665d;
   background-image: radial-gradient(
     ellipse 85% 320% at var(--lamp-rel, 50%) 45%,
-    #ffffff 0%,
-    #fbf8f1 14%,
-    #d9d2c4 34%,
-    #8e8678 62%,
-    #4a463e 84%,
-    #2b2821 100%
+    color-mix(in srgb, #ffffff calc(var(--title-lit, 1) * 100%), var(--title-dim)) 0%,
+    color-mix(in srgb, #fbf8f1 calc(var(--title-lit, 1) * 100%), var(--title-dim)) 14%,
+    color-mix(in srgb, #d9d2c4 calc(var(--title-lit, 1) * 100%), var(--title-dim)) 34%,
+    color-mix(in srgb, #8e8678 calc(var(--title-lit, 1) * 100%), var(--title-dim)) 62%,
+    color-mix(in srgb, #4a463e calc(var(--title-lit, 1) * 100%), var(--title-dim)) 84%,
+    color-mix(in srgb, #2b2821 calc(var(--title-lit, 1) * 100%), var(--title-dim)) 100%
   );
   -webkit-background-clip: text;
   background-clip: text;
@@ -531,55 +535,92 @@ textarea:focus-visible {
     transform 0.3s ease;
 }
 
-/* ── Baris opasitas: sticky di bawah header, selalu bisa diklik ── */
+/* ── Baris opasitas: tipis, di-TENGAH bawah header, ada jarak dari form ── */
 .opacity-bar {
   position: relative;
   z-index: 20; /* di atas overlay lampu (z-index 5) */
   display: flex;
   align-items: center;
-  gap: 12px;
-  width: min(220px, 60vw);
-  margin: 2px 0 0 auto;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  margin: 8px 0 16px; /* jarak dari header & kotak form */
   pointer-events: auto;
 }
 
 .opacity-bar-value {
-  min-width: 34px;
-  color: var(--accent);
-  font-size: 11px;
+  min-width: 30px;
+  color: var(--muted);
+  font-size: 10px;
   font-variant-numeric: tabular-nums;
-  text-align: right;
+  text-align: left;
 }
 
 .opacity-bar input[type='range'] {
-  flex: 1 1 auto;
-  min-width: 0;
-  height: 18px;
+  width: 120px;
+  height: 16px;
   margin: 0;
-  accent-color: var(--accent);
+  background: none;
+  appearance: none;
+  -webkit-appearance: none;
   cursor: pointer;
   touch-action: manipulation;
 }
+.opacity-bar input[type='range']::-webkit-slider-runnable-track {
+  height: 2px;
+  border-radius: 2px;
+  background: var(--border-strong);
+}
+.opacity-bar input[type='range']::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -5px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.opacity-bar input[type='range']::-moz-range-track {
+  height: 2px;
+  border-radius: 2px;
+  background: var(--border-strong);
+}
+.opacity-bar input[type='range']::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+}
 
-/* ── Glow dari lampu ke header (variabel --lamp-glow dari JS) ──── */
+/* ── Glow dari lampu ke header (--lamp-glow = lift arah, 0..1) ── */
 .topbar-brand,
 .drive-button,
 .header-actions .theme-button {
   transition: color 0.18s ease, text-shadow 0.18s ease, filter 0.18s ease;
 }
 
+/* DRIVE + brand kiri ikut menyala hangat. */
 .topbar-brand,
 .drive-button {
   color: color-mix(in srgb, var(--muted) calc((1 - var(--lamp-glow)) * 100%),
     var(--accent) calc(var(--lamp-glow) * 100%));
-  text-shadow: 0 0 calc(var(--lamp-glow) * 14px)
-    color-mix(in srgb, var(--accent) calc(var(--lamp-glow) * 70%), transparent);
+  text-shadow: 0 0 calc(var(--lamp-glow) * 16px)
+    color-mix(in srgb, var(--accent) calc(var(--lamp-glow) * 85%), transparent);
 }
 
+/* Semua 3 ikon kanan (sound, fullscreen, tema) ikut menyala jelas. */
 .header-actions .theme-button {
-  filter: brightness(calc(1 + var(--lamp-glow) * 0.5))
-    drop-shadow(0 0 calc(var(--lamp-glow) * 8px)
-      color-mix(in srgb, var(--accent) calc(var(--lamp-glow) * 60%), transparent));
+  color: color-mix(in srgb, var(--accent) calc((1 - var(--lamp-glow)) * 100%),
+    #fff8e8 calc(var(--lamp-glow) * 100%));
+  filter: drop-shadow(0 0 calc(var(--lamp-glow) * 10px)
+    color-mix(in srgb, var(--accent) calc(var(--lamp-glow) * 90%), transparent));
+}
+.drive-button .status-dot {
+  box-shadow: 0 0 calc(var(--lamp-glow) * 10px)
+    color-mix(in srgb, var(--accent) calc(var(--lamp-glow) * 90%), transparent);
 }
 
 /* ── Composer ────────────────────────────────────────── */

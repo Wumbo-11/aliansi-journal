@@ -334,7 +334,9 @@ if (lamp && lampHead && cablePath) {
     /\.title-mark-text\s*\{[^}]*background-clip:\s*text/s.test(cssSource) &&
     /\.title-mark-text\s*\{[^}]*radial-gradient/s.test(cssSource))
   check('lampu: gradasi halus (>4 stop warna, tidak patah)',
-    (cssSource.match(/#ffffff 0%,[\s\S]{0,220}?#2b2821 100%/) || []).length > 0)
+    (cssSource.match(/#ffffff calc\([\s\S]{0,500}?#2b2821 calc\([\s\S]{0,120}?100%/) || []).length > 0)
+  check('lampu: judul meredup saat lampu ditarik atas (--title-lit)',
+    cssSource.includes('var(--title-lit, 1)'))
   check('lampu: teks pakai posisi sorotan relatif (--lamp-rel)', cssSource.includes('var(--lamp-rel'))
   check('lampu: overlay fixed seluruh layar (tidak terpotong overflow)',
     /\.lamp-overlay \{\s*position: fixed;/.test(cssSource) &&
@@ -552,9 +554,19 @@ check('perf lampu: ukuran diukur di measure(), bukan tiap frame',
   /const step = \(\) =>/.test(lampSrc) &&
   !/const step = \(\) =>[\s\S]*?getBoundingClientRect/.test(lampSrc))
 check('perf lampu: pointermove pakai grab offset (anti-lompat)',
-  /grab\.current = \{ x: cap\.x - event\.clientX/.test(lampSrc) &&
+  /grab\.current = \{ x: c\.x - event\.clientX/.test(lampSrc) &&
   /target\.current = \{ x: event\.clientX \+ grab\.current\.x/.test(lampSrc) &&
   /requestAnimationFrame\(step\)/.test(lampSrc))
+check('perf lampu: KAP KINEMATIS nempel target (tanpa easing/gravitasi/viskositas)',
+  /capPos\.current\.x = goal\.x/.test(lampSrc) &&
+  /capPos\.current\.y = goal\.y/.test(lampSrc) &&
+  !/capPos\.current\.x \+= \(goal\.x - capPos/.test(lampSrc))
+check('perf lampu: rotasi kap dari anchor→kap (deterministik, bukan dari kabel)',
+  /const capAngle/.test(lampSrc) &&
+  /Math\.atan2\(-\(c\.x - a\.x\), c\.y - a\.y\)/.test(lampSrc))
+check('perf lampu: re-anchor geser SEMUA titik saat layout bergeser',
+  /pts\.current\.forEach\(\(pt\) => \{ pt\.x \+= dx; pt\.y \+= dy/.test(lampSrc) &&
+  /fullscreenchange/.test(lampSrc))
 check('perf lampu: target di-clamp radius (kabel tidak memanjang)',
   /const clampedTarget/.test(lampSrc) && /d <= CORD/.test(lampSrc))
 check('perf lampu: tanpa state React saat drag (tanpa setActive)',
@@ -568,11 +580,14 @@ check('perf lampu: variabel tak terpakai (--lamp-x/-y) dibuang',
 check('perf lampu: loop berhenti saat rantai diam (raf = 0)',
   /else raf\.current = 0/.test(lampSrc) &&
   /if \(!raf\.current\)/.test(lampSrc))
-check('perf lampu: glow header dari posisi kap',
-  /setProperty\('--lamp-glow'/.test(lampSrc) && /headerBottom/.test(lampSrc))
+check('perf lampu: glow & judul dari lift ARAH (bukan jarak absolut)',
+  /setProperty\('--lamp-glow'/.test(lampSrc) &&
+  /a\.y - c\.y\) \/ CORD/.test(lampSrc) &&
+  lampSrc.includes("setProperty('--title-lit'") &&
+  !/headerBottom/.test(lampSrc))
 check('perf lampu: ukur ulang saat font siap & resize (langsung, tanpa rAF storm)',
   /fonts\?\.ready/.test(lampSrc) && /orientationchange/.test(lampSrc) &&
-  /onResize = \(\) => \{[\s\S]{0,120}measure\(\)/.test(lampSrc))
+  /onLayout = \(\) => \{[\s\S]{0,120}measure\(\)/.test(lampSrc))
 check('perf dot: timer kecepatan berhenti saat idle',
   /const stopSpeedTimer = \(\) => \{/.test(dotSrc) &&
   /raf = 0\s*\n\s*stopSpeedTimer\(\)/.test(dotSrc))

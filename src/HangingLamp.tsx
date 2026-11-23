@@ -4,10 +4,13 @@ import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerE
 // Jarak gantung saat diam (titik gantung → pusat kap lampu).
 const CORD = 76
 const REST_EPS = 0.05
-// Batas panggung: hanya supaya kap lampu tidak keluar dari area hero.
-const PAD_X = 26
-const PAD_TOP = 12
+// Titik sambung kabel di kap lampu (jarak dari pusat ke leher atas).
+const NECK = 26
+// Batas panggung: kap lampu tidak boleh keluar area lampu / menimpa judul.
+const PAD_X = 52
+const PAD_TOP = 36
 const PAD_BOTTOM = 24
+const TITLE_GAP = 56
 
 const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v)
 
@@ -18,8 +21,10 @@ const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi 
  *  - Kap lampu menempel ke jari 1:1 — tanpa redaman, tanpa snap, tanpa zona
  *    "karet". Mau ditarik 1 px ke arah mana pun, ya segitu pindahnya.
  *  - Kabel digambar sebagai cubic Bézier dengan tangen vertikal di titik
- *    gantung: selalu turun dulu dari langit-langit baru melengkung ke kap
- *    lampu, jadi tidak pernah tampak seperti garis lurus yang melar.
+ *    gantung: selalu turun dulu dari langit-langit baru melengkung ke LEHER
+ *    kap lampu, jadi tidak pernah tampak seperti garis lurus yang melar.
+ *  - Kap lampu ikut miring mengikuti arah tarikan, dan lehernya selalu
+ *    tersambung tepat ke ujung kabel.
  *  - Saat digeser cepat, lengkung kabel tertinggal di belakang gerakan.
  *  - Saat dilepas, lampu kembali ke posisi istirahat dengan pegas teredam
  *    dua sumbu (jalur melengkung seperti bandul, bukan garis lurus kaku).
@@ -46,13 +51,15 @@ export default function HangingLamp() {
 
   const geo = useRef({
     ax: 0, width: 0, height: 0, originLeft: 0, originTop: 0, zoom: 1,
-    textLeft: 0, textWidth: 1, ready: false, inited: false,
+    textLeft: 0, textWidth: 1, maxY: CORD + 50, ready: false, inited: false,
   })
   const last = useRef({ transform: '', d: '', rel: NaN })
   const grab = useRef({ dx: 0, dy: 0 })
   // Kecepatan halus (px/frame) → dipakai untuk lengkuk kabel.
   const flow = useRef({ x: 0, y: 0 })
   const prev = useRef({ x: 0, y: CORD })
+  // Kemiringan kap lampu (rad) — mengikuti arah kabel yang masuk.
+  const tilt = useRef(0)
   const pending = useRef<{ x: number; y: number } | null>(null)
   const frameQueued = useRef(false)
 
@@ -66,6 +73,7 @@ export default function HangingLamp() {
     const width = rect.width / zoom || hero.clientWidth || window.innerWidth || 360
     const height = rect.height / zoom || window.innerHeight || 640
 
+    const title = hero.querySelector('.title-mark') as HTMLElement | null
     const text = hero.querySelector('.title-mark-text') as HTMLElement | null
     let textLeft = 0
     let textWidth = width
@@ -75,11 +83,19 @@ export default function HangingLamp() {
       textWidth = tr.width / zoom || width
     }
 
+    // Kap lampu berhenti SEBELUM judul — tidak boleh menimpa teks.
+    let maxY = CORD + 40
+    if (title) {
+      const tr = title.getBoundingClientRect()
+      const titleTop = (tr.top - rect.top) / zoom
+      if (titleTop > CORD + 24) maxY = titleTop - TITLE_GAP
+    }
+
     textRef.current = text
     geo.current = {
       ax: width / 2, width, height,
       originLeft: rect.left, originTop: rect.top, zoom,
-      textLeft, textWidth,
+      textLeft, textWidth, maxY,
       ready: width > 0, inited: geo.current.inited,
     }
     svgRef.current?.setAttribute('viewBox', `0 0 ${width.toFixed(2)} ${height.toFixed(2)}`)
@@ -93,14 +109,15 @@ export default function HangingLamp() {
     }
   }
 
-  /** Batas geser: keras di tepi panggung saja — di dalamnya 1:1 dengan jari. */
+  /** Batas geser: keras di tepi panggung — di dalamnya 1:1 dengan jari. */
   const limitX = (v: number) => {
     const { width } = geo.current
     return width > 0 ? clamp(v, PAD_X, Math.max(PAD_X, width - PAD_X)) : v
   }
   const limitY = (v: number) => {
-    const { height } = geo.current
-    return height > 0 ? clamp(v, PAD_TOP, Math.max(PAD_TOP, height - PAD_BOTTOM)) : v
+    const { height, maxY } = geo.current
+    const bottom = Math.min(maxY, height - PAD_BOTTOM)
+    return clamp(v, PAD_TOP, Math.max(PAD_TOP, bottom))
   }
 
   const commit = () => {
@@ -111,23 +128,16 @@ export default function HangingLamp() {
     const x = posX.current
     const y = posY.current
 
-    // --- Kap lampu: persis di posisi jari (tanpa redaman, tanpa snap). ---
-    const transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0) translate(-50%, -50%)`
-    if (transform !== last.current.transform) {
-      head.style.transform = transform
-      last.current.transform = transform
-    }
-
     // --- Kecepatan halus (px/frame) untuk lengkung kabel. ---
     flow.current.x += (x - prev.current.x - flow.current.x) * 0.35
     flow.current.y += (y - prev.current.y - flow.current.y) * 0.35
     prev.current.x = x
     prev.current.y = y
 
-    // --- Kabel: cubic Bézier dari titik gantung tetap ke kap lampu. ---
+    // --- Kabel: cubic Bézier dari titik gantung tetap ke LEHER kap lampu. ---
     // Tangen di titik gantung SELALU vertikal: kabel turun dulu dari langit-
-    // langit, baru melengkung ke kap lampu. Jadi bagian atas kabel kelihatan
-    // diam & menggantung, bukan garis lurus yang ikut melar.
+    // langit, baru melengkung ke kap lampu. Bagian atas kabel kelihatan diam
+    // & menggantung, bukan garis lurus yang ikut melar.
     const dx = x - ax
     const dy = y
     const len = Math.hypot(dx, dy) || 1
@@ -135,17 +145,39 @@ export default function HangingLamp() {
     const ny = dx / len
     // Saat digeser cepat, lengkungnya tertinggal di belakang gerakan (tali).
     const trail = clamp(-(flow.current.x * nx + flow.current.y * ny) * 1.3, -38, 38)
-    // P1 sengaja persis di bawah titik gantung → tangen atas selalu vertikal.
-    const p1x = ax
-    const p1y = dy * 0.55
-    const p2x = x - dx * 0.12 + nx * trail * 0.55
-    const p2y = y - dy * 0.22
+
+    // Kemiringan kap lampu mengikuti arah tarikan (bukan terkunci ke bawah),
+    // dihaluskan supaya tidak kaku.
+    const target = clamp(Math.atan2(-dx, Math.max(dy, 1)), -0.78, 0.78)
+    tilt.current += (target - tilt.current) * 0.3
+    if (Math.abs(target - tilt.current) < 0.0005) tilt.current = target
+    const th = tilt.current
+    const sin = Math.sin(th)
+    const cos = Math.cos(th)
+
+    // Leher kap lampu ikut miring → kabel selalu tersambung tepat di atasnya.
+    const neckX = x + NECK * sin
+    const neckY = y - NECK * cos
+    // P1 tepat di bawah titik gantung (tangen atas vertikal), P2 sejajar
+    // sumbu kap lampu → kabel masuk ke leher searah kemiringan kap.
+    const p1y = neckY * 0.55
+    const p2x = neckX + sin * 14 + nx * trail * 0.55
+    const p2y = neckY - cos * 14
     const d =
-      `M ${ax.toFixed(2)} 0 C ${p1x.toFixed(2)} ${p1y.toFixed(2)} ` +
-      `${p2x.toFixed(2)} ${p2y.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)}`
+      `M ${ax.toFixed(2)} 0 C ${ax.toFixed(2)} ${p1y.toFixed(2)} ` +
+      `${p2x.toFixed(2)} ${p2y.toFixed(2)} ${neckX.toFixed(2)} ${neckY.toFixed(2)}`
     if (d !== last.current.d) {
       path.setAttribute('d', d)
       last.current.d = d
+    }
+
+    // Kap lampu: persis di posisi jari (tanpa redaman, tanpa snap).
+    const rot = th === 0 ? '' : ` rotate(${th.toFixed(4)}rad)`
+    const transform =
+      `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0) translate(-50%, -50%)${rot}`
+    if (transform !== last.current.transform) {
+      head.style.transform = transform
+      last.current.transform = transform
     }
 
     // --- Sorotan di huruf selalu mengikuti posisi X lampu. ---
@@ -202,6 +234,7 @@ export default function HangingLamp() {
         velX.current = 0
         velY.current = 0
         flow.current = { x: 0, y: 0 }
+        tilt.current = 0
         commit()
         rig?.classList.remove('is-swinging')
       }
@@ -230,6 +263,8 @@ export default function HangingLamp() {
         if (!wasDragging) {
           posX.current = geo.current.ax
           posY.current = CORD
+          flow.current = { x: 0, y: 0 }
+          tilt.current = 0
         }
         commit()
       })
@@ -247,6 +282,8 @@ export default function HangingLamp() {
           posY.current = CORD
           velX.current = 0
           velY.current = 0
+          flow.current = { x: 0, y: 0 }
+          tilt.current = 0
         }
         commit()
       })
@@ -326,6 +363,7 @@ export default function HangingLamp() {
       velX.current = 0
       velY.current = 0
       flow.current = { x: 0, y: 0 }
+      tilt.current = 0
       prev.current = { x: posX.current, y: posY.current }
       commit()
     } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {

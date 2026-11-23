@@ -289,6 +289,8 @@ if (lamp && lampHead && cablePath) {
     /^M [\d.]+ 0 C [-0-9.]+ [-0-9.]+ [-0-9.]+ [-0-9.]+ [-0-9.]+ [-0-9.]+$/.test(rightD), rightD)
   check('lampu: titik gantung tidak ikut bergerak',
     rightD.startsWith(`M ${(window.innerWidth / 2).toFixed(2)} 0`), rightD)
+  check('lampu: kap lampu miring mengikuti arah kabel (bohlam tidak terkunci ke bawah)',
+    /rotate\(-0\.\d+rad\)/.test(lampHead.style.transform || ''), lampHead.style.transform)
   // Titik kontrol pertama harus tepat di bawah titik gantung (tangen vertikal).
   const ctrl = /^M ([\d.]+) 0 C ([\d.]+) [\d.]+/.exec(rightD)
   check('lampu: kabel turun dulu dari langit-langit (tangen vertikal)',
@@ -302,12 +304,17 @@ if (lamp && lampHead && cablePath) {
     Math.abs(tiny.x - (rest.x + 123)) < 0.6 && Math.abs(tiny.y - 77) < 0.6,
     `x=${tiny.x} y=${tiny.y}`)
 
-  // Tarik jauh ke bawah: harus ikut persis (tanpa pegas/batas karet).
+  // Tarik jauh ke bawah: harus berhenti SEBELUM judul, bukan ke dasar web.
   window.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: rest.x, clientY: 400 }))
   await sleep(60)
   const down = headXY()
-  check('lampu: tarik ke bawah ikut persis (tanpa rubber band)',
-    Math.abs(down.y - (400 - 44)) < 0.6, `y=${down.y}`)
+  check('lampu: berhenti sebelum judul (tidak sampai dasar halaman)',
+    down.y > 90 && down.y <= 116.01, `y=${down.y}`)
+  // Ditarik lebih jauh lagi: posisi tidak ikut molor (bukan rubber band).
+  window.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: rest.x, clientY: 700 }))
+  await sleep(60)
+  check('lampu: batas keras, bukan karet (tidak ikut molor lagi)',
+    Math.abs(headXY().y - down.y) < 0.01, `y=${headXY().y}`)
 
   // Geser KE KIRI.
   window.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: rest.x - 120, clientY: 120 }))
@@ -323,7 +330,7 @@ if (lamp && lampHead && cablePath) {
   await sleep(60)
   const up = headXY()
   check('lampu: bisa ditarik ke atas (sumbu Y bebas)',
-    up.y < down.y - 10 && up.y >= 12, `y=${up.y}`)
+    up.y < down.y - 10 && up.y >= 36, `y=${up.y}`)
 
   // jsdom tidak memuat CSS hasil bundling Vite, jadi baca sumber CSS langsung.
   const cssSource = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
@@ -340,6 +347,18 @@ if (lamp && lampHead && cablePath) {
   window.dispatchEvent(new window.MouseEvent('pointerup', { bubbles: true }))
   await sleep(40)
   check('lampu: berhenti aktif setelah dilepas', !lamp.classList.contains('is-dragging'))
+
+  // Setelah diam: kemiringan hilang & kembali ke posisi istirahat.
+  const t0 = Date.now()
+  while (
+    Date.now() - t0 < 9000 &&
+    (/rotate/.test(lampHead.style.transform || '') || Math.abs(headXY().y - 76) > 1)
+  ) {
+    await sleep(80)
+  }
+  check('lampu: kembali tegak & menggantung diam setelah dilepas',
+    !/rotate/.test(lampHead.style.transform || '') &&
+    Math.abs(headXY().y - 76) < 1.5, lampHead.style.transform)
 }
 
 check('footer: teks dibuang & wordmark pakai animasi pop',
@@ -362,8 +381,14 @@ check('typewriter: mengetik sampai "Aliansi"', await waitFor(() => titleText() =
 // Subtitle halaman 1: typewriter maju-mundur, font/ukuran tetap.
 const subtitleText = () => document.querySelector('.hero-subtitle .typewriter-line')?.textContent ?? ''
 const subA = subtitleText()
-await sleep(600)
-const subB = subtitleText()
+// Sample beberapa detik: typewriter punya jeda "hold", jadi jangan cuma
+// membandingkan 2 cuplikan berdekatan (bisa kebetulan sama saat menahan).
+const subStarted = Date.now()
+let subB = subA
+while (Date.now() - subStarted < 4000 && subB === subA) {
+  await sleep(100)
+  subB = subtitleText()
+}
 check('subtitle: typewriter berjalan (teks berubah dari waktu ke waktu)',
   subA !== subB && subB.length > 0, `"${subA}" -> "${subB}"`)
 check('subtitle: caret hadir & tinggi dikunci',

@@ -1,37 +1,44 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 
+// Jarak gantung saat diam (titik gantung → pusat kap lampu).
 const CORD = 76
-// Batas ayun per sumbu (~35°). Panjang kabel TIDAK berubah — ujung selalu
-// berada di bola berjari-jari CORD dari titik gantung.
-const MAX_ANGLE = 0.62
-const MAX_D = Math.sin(MAX_ANGLE) * CORD
-const REST_EPS = 0.0015
-// Perspektif 3D: rotasi X (samping) + rotasi Z (naik-turun).
-const PERSPECTIVE = 900
+const REST_EPS = 0.05
+// Zona geser + pegas di tepi (rubber band), biar tidak terasa "nabrak dinding".
+const EDGE = 44
+const SOFT = 0.28
+const SOFT_MAX = 46
+const MIN_Y = 34
+
+const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v)
 
 /**
- * Lampu gantung yang bisa ditarik bebas ke SEGALA ARAH (kiri/kanan/atas/bawah),
- * seperti bandul 2D — bukan hanya pendulum satu sumbu.
+ * Lampu gantung dengan kabel yang berperilaku seperti kabel:
  *
- * Model: posisi lampu = titik di permukaan bola berjari-jari CORD di bawah
- * titik gantung. Jadi:
- *  - panjang kabel tetap (tidak memanjang/memendek),
- *  - posisi gantung tetap,
- *  - lampu bisa ditarik ke samping (x) dan ke atas/bawah (y dalam arti
- *    menjauhi/mendekati layar lewat rotasi Z yang terlihat seperti naik-turun).
+ *  - Titik gantung (anchor) di atas TETAP. Tidak ikut bergerak.
+ *  - Kap lampu menempel ke jari 1:1 (pakai selisih grab, jadi tidak melompat
+ *    saat disentuh) dan bisa ditarik ke segala arah.
+ *  - Kabel digambar sebagai kurva (quadratic Bézier) dari anchor ke kap lampu:
+ *    saat ada kelonggaran ia melengkung, saat ditarik ia menegang, dan saat
+ *    digeser cepat ia tertinggal sedikit di belakang gerakan (efek tali).
+ *    Lebar garis tetap → tidak pernah terlihat melar.
+ *  - Saat dilepas, lampu kembali ke posisi istirahat dengan pegas teredam
+ *    dua sumbu (jalur melengkung seperti bandul, bukan garis lurus kaku).
  *
- * Performa:
- * - Geometri diukur sekali (resize/ResizeObserver), bukan per frame.
- * - Satu commit() yang hanya menulis DOM bila nilainya berubah.
- * - Input pointer di-coalesce ke frame berikutnya.
- * - Tanpa state React saat drag.
+ * Performa: geometri diukur sekali (mount/resize/drag-start), penulisan DOM
+ * lewat satu commit() yang hanya menulis bila berubah, pointer di-coalesce
+ * per frame, tanpa state React saat drag.
  */
 export default function HangingLamp() {
   const rigRef = useRef<HTMLDivElement>(null)
-  // Sudut 2 sumbu: ax = samping, ay = naik/turun (proyeksi).
-  const angleX = useRef(0)
-  const angleY = useRef(0)
+  const headRef = useRef<HTMLDivElement>(null)
+  const cableRef = useRef<SVGPathElement>(null)
+  const svgRef = useRef<SVGSVGElement>(null)
+  const textRef = useRef<HTMLElement | null>(null)
+
+  // Posisi kap lampu relatif ke titik gantung (px ruang layout).
+  const posX = useRef(0)
+  const posY = useRef(CORD)
   const velX = useRef(0)
   const velY = useRef(0)
   const dragging = useRef(false)
@@ -39,11 +46,14 @@ export default function HangingLamp() {
   const lastTime = useRef(0)
 
   const geo = useRef({
-    anchorX: 0, left: 0, zoom: 1, textLeft: 0, textWidth: 1, restY: CORD, ready: false,
+    ax: 0, width: 0, height: 0, originLeft: 0, originTop: 0, zoom: 1,
+    textLeft: 0, textWidth: 1, maxY: CORD + 34, ready: false, inited: false,
   })
-  const textRef = useRef<HTMLElement | null>(null)
-  const last = useRef({ rot: '', rel: NaN })
-  // Target pointer (client coords), dikonsumsi di frame.
+  const last = useRef({ transform: '', d: '', rel: NaN })
+  const grab = useRef({ dx: 0, dy: 0 })
+  // Kecepatan halus (px/frame) → dipakai untuk lengkuk kabel.
+  const flow = useRef({ x: 0, y: 0 })
+  const prev = useRef({ x: 0, y: CORD })
   const pending = useRef<{ x: number; y: number } | null>(null)
   const frameQueued = useRef(false)
 
@@ -51,58 +61,109 @@ export default function HangingLamp() {
     const rig = rigRef.current
     const hero = rig?.parentElement
     if (!rig || !hero) return
-    const rect = hero.getBoundingClientRect()
+    const rect = rig.getBoundingClientRect()
     const zoom = Number.parseFloat(window.getComputedStyle(hero).zoom) || 1
-    const width = rect.width / zoom
+    // Fallback: jsdom / layout belum siap (rect = 0) → pakai lebar viewport.
+    const width = rect.width / zoom || hero.clientWidth || window.innerWidth || 360
+    const height = rect.height / zoom || window.innerHeight || 640
+
+    const title = hero.querySelector('.title-mark') as HTMLElement | null
     const text = hero.querySelector('.title-mark-text') as HTMLElement | null
     let textLeft = 0
     let textWidth = width
     if (text) {
       const tr = text.getBoundingClientRect()
       textLeft = (tr.left - rect.left) / zoom
-      textWidth = tr.width / zoom || width || 1
+      textWidth = tr.width / zoom || width
     }
+
+    // Jangan sampai kap lampu menutupi judul saat ditarik ke bawah.
+    let maxY = CORD + 34
+    if (title) {
+      const tr = title.getBoundingClientRect()
+      const titleTop = (tr.top - rect.top) / zoom
+      if (titleTop > 0) maxY = titleTop - 30
+    }
+    if (!Number.isFinite(maxY) || maxY < CORD + 14) maxY = CORD + 34
+
     textRef.current = text
     geo.current = {
-      anchorX: width / 2,
-      left: rect.left / zoom,
-      zoom,
-      textLeft,
-      textWidth,
-      // Posisi istirahat kap lampu di layar: CORD di bawah titik gantung.
-      restY: rect.top / zoom + CORD,
-      ready: width > 0,
+      ax: width / 2, width, height,
+      originLeft: rect.left, originTop: rect.top, zoom,
+      textLeft, textWidth, maxY,
+      ready: width > 0, inited: geo.current.inited,
     }
-    last.current = { rot: '', rel: NaN }
+    svgRef.current?.setAttribute('viewBox', `0 0 ${width.toFixed(2)} ${height.toFixed(2)}`)
+    last.current = { transform: '', d: '', rel: NaN }
+
+    if (!geo.current.inited && width > 0) {
+      posX.current = width / 2
+      posY.current = CORD
+      prev.current = { x: posX.current, y: posY.current }
+      geo.current.inited = true
+    }
   }
 
-  const commit = () => {
-    const rig = rigRef.current
-    const hero = rig?.parentElement
-    if (!rig || !hero) return
-    const { anchorX, textLeft, textWidth } = geo.current
-    const ax = angleX.current
-    const ay = angleY.current
+  /** Batas geser: pegas lembut di tepi, bukan dinding kaku. */
+  const softClamp = (v: number, lo: number, hi: number) => {
+    if (v < lo) return lo - Math.min(SOFT_MAX, (lo - v) * SOFT)
+    if (v > hi) return hi + Math.min(SOFT_MAX, (v - hi) * SOFT)
+    return v
+  }
+  const limitX = (v: number) => {
+    const { width } = geo.current
+    return width > 0 ? softClamp(v, EDGE, Math.max(EDGE, width - EDGE)) : v
+  }
+  const limitY = (v: number) => softClamp(v, MIN_Y, geo.current.maxY)
 
-    // --- RIG: rotasi 2 sumbu ---
-    // CSS rotate(+θ) memutar ke KIRI (sumbu Y ke bawah), jadi negatifkan ax
-    // supaya kap lampu bergerak searah tarikan jari.
-    const transform =
-      `perspective(${PERSPECTIVE}px) rotateZ(${ay.toFixed(4)}rad) rotate(${(-ax).toFixed(4)}rad)`
-    if (transform !== last.current.rot) {
-      rig.style.transform = transform
-      last.current.rot = transform
+  const commit = () => {
+    const head = headRef.current
+    const path = cableRef.current
+    if (!head || !path) return
+    const { ax, textLeft, textWidth } = geo.current
+    const x = posX.current
+    const y = posY.current
+
+    // --- Kap lampu: geser ke posisi jari (GPU, tanpa reflow). ---
+    const transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0) translate(-50%, -50%)`
+    if (transform !== last.current.transform) {
+      head.style.transform = transform
+      last.current.transform = transform
     }
 
-    // --- Sorotan di teks: posisi X lampu, plus redup saat lampu menjauhi
-    //     (ditarik ke atas) supaya terasa 3D. ---
-    const bx = anchorX + Math.sin(ax) * CORD
-    const rel = ((bx - textLeft) / textWidth) * 100
+    // --- Kecepatan halus untuk lengkung kabel. ---
+    flow.current.x += (x - prev.current.x - flow.current.x) * 0.35
+    flow.current.y += (y - prev.current.y - flow.current.y) * 0.35
+    prev.current.x = x
+    prev.current.y = y
+
+    // --- Kabel: kuadratik dari anchor tetap ke kap lampu. ---
+    const dx = x - ax
+    const dy = y
+    const len = Math.hypot(dx, dy) || 1
+    const ux = dx / len
+    const uy = dy / len
+    const nx = -uy // tegak lurus arah kabel
+    const ny = ux
+    // Kelonggaran (lampu ditarik ke atas) → kabel melengkung.
+    const slack = Math.max(0, CORD - len)
+    // Gerakan cepat → kabel tertinggal di belakang, seperti tali.
+    const trail = clamp(-(flow.current.x * nx + flow.current.y * ny) * 1.6, -34, 34)
+    const bow = slack * 0.6 + trail
+    const cx = ax + dx * 0.5 + nx * bow
+    const cy = dy * 0.5 + ny * bow
+    const d =
+      `M ${ax.toFixed(2)} 0 Q ${cx.toFixed(2)} ${cy.toFixed(2)} ` +
+      `${x.toFixed(2)} ${y.toFixed(2)}`
+    if (d !== last.current.d) {
+      path.setAttribute('d', d)
+      last.current.d = d
+    }
+
+    // --- Sorotan di huruf selalu mengikuti posisi X lampu. ---
+    const rel = ((x - textLeft) / textWidth) * 100
     if (rel !== last.current.rel) {
-      ;(textRef.current ?? hero).style.setProperty('--lamp-rel', `${rel.toFixed(2)}%`)
-      // Semakin lampu "naik" (ditarik menjauh), sorotan sedikit melembut.
-      const lift = Math.min(1, Math.abs(Math.sin(ay)))
-      ;(textRef.current ?? hero).style.setProperty('--lamp-glow', (1 - lift * 0.45).toFixed(3))
+      ;(textRef.current ?? head).style.setProperty('--lamp-rel', `${rel.toFixed(2)}%`)
       last.current.rel = rel
     }
   }
@@ -112,60 +173,47 @@ export default function HangingLamp() {
     frameQueued.current = true
     raf.current = requestAnimationFrame(() => {
       frameQueued.current = false
-      if (!geo.current.ready) measure()
       const point = pending.current
       if (point) {
-        aimAt(point.x, point.y)
+        if (!geo.current.ready) measure()
+        const { originLeft, originTop, zoom } = geo.current
+        posX.current = limitX((point.x - originLeft) / zoom + grab.current.dx)
+        posY.current = limitY((point.y - originTop) / zoom + grab.current.dy)
         pending.current = null
       }
       commit()
     })
   }
 
-  /** Ubah posisi pointer → sudut 2 sumbu, dibatasi bola berjari-jari CORD. */
-  const aimAt = (clientX: number, clientY: number) => {
-    if (!geo.current.ready) measure()
-    const { anchorX, left, zoom, restY } = geo.current
-    const dx = clientX / zoom - left - anchorX
-
-    // Bola: sqrt(x² + z²) = CORD. Drag 2D dipetakan ke dua sudut:
-    //   ax dari dx (maks ±MAX_D)
-    //   ay dari seberapa jauh ditarik ke ATAS dari posisi istirahat.
-    const clamped = dx < -MAX_D ? -MAX_D : dx > MAX_D ? MAX_D : dx
-    angleX.current = Math.asin(clamped / CORD)
-
-    const dyUp = restY - clientY / zoom // positif = ditarik ke atas
-    const ratio = dyUp / CORD
-    angleY.current = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, ratio))
-  }
-
-  const swingBack = () => {
+  const settle = () => {
     cancelAnimationFrame(raf.current)
     frameQueued.current = false
     lastTime.current = 0
     const rig = rigRef.current
     rig?.classList.add('is-swinging')
+    const restX = geo.current.ax
+    const restY = CORD
     const step = (now: number) => {
       const dt = lastTime.current ? Math.min(2, (now - lastTime.current) / 16.667) : 1
       lastTime.current = now
-      // Spring damper, dua sumbu independen.
-      velX.current += -angleX.current * 0.075 * dt
-      velY.current += -angleY.current * 0.075 * dt
-      velX.current *= dt >= 2 ? 0.81 : 0.9
-      velY.current *= dt >= 2 ? 0.81 : 0.9
-      angleX.current += velX.current * dt
-      angleY.current += velY.current * dt
+      // Pegas teredam dua sumbu → jalurnya melengkung seperti bandul
+      // (periode ±1,1 detik, 2–3 ayunan sebelum diam — tidak kaku).
+      velX.current = (velX.current + (restX - posX.current) * 0.009 * dt) * Math.pow(0.96, dt)
+      velY.current = (velY.current + (restY - posY.current) * 0.009 * dt) * Math.pow(0.96, dt)
+      posX.current += velX.current * dt
+      posY.current += velY.current * dt
       commit()
       if (
-        Math.abs(angleX.current) > REST_EPS || Math.abs(velX.current) > REST_EPS ||
-        Math.abs(angleY.current) > REST_EPS || Math.abs(velY.current) > REST_EPS
+        Math.abs(restX - posX.current) > REST_EPS || Math.abs(velX.current) > REST_EPS ||
+        Math.abs(restY - posY.current) > REST_EPS || Math.abs(velY.current) > REST_EPS
       ) {
         raf.current = requestAnimationFrame(step)
       } else {
-        angleX.current = 0
-        angleY.current = 0
+        posX.current = restX
+        posY.current = restY
         velX.current = 0
         velY.current = 0
+        flow.current = { x: 0, y: 0 }
         commit()
         rig?.classList.remove('is-swinging')
       }
@@ -173,7 +221,8 @@ export default function HangingLamp() {
     raf.current = requestAnimationFrame(step)
   }
 
-  useEffect(() => {
+  // Layout effect: posisi awal sudah benar sebelum frame pertama dilukis.
+  useLayoutEffect(() => {
     measure()
     commit()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -188,7 +237,12 @@ export default function HangingLamp() {
     const text = hero?.querySelector('.title-mark-text') as HTMLElement | null
     if (text && typeof ResizeObserver !== 'undefined') {
       resizeObserver = new ResizeObserver(() => {
+        const wasDragging = dragging.current
         measure()
+        if (!wasDragging) {
+          posX.current = geo.current.ax
+          posY.current = CORD
+        }
         commit()
       })
       resizeObserver.observe(text)
@@ -198,7 +252,14 @@ export default function HangingLamp() {
     const onResize = () => {
       cancelAnimationFrame(resizeRaf)
       resizeRaf = requestAnimationFrame(() => {
+        const wasDragging = dragging.current
         measure()
+        if (!wasDragging) {
+          posX.current = geo.current.ax
+          posY.current = CORD
+          velX.current = 0
+          velY.current = 0
+        }
         commit()
       })
     }
@@ -224,7 +285,7 @@ export default function HangingLamp() {
       dragging.current = false
       pending.current = null
       rigRef.current?.classList.remove('is-dragging')
-      swingBack()
+      settle()
     }
     window.addEventListener('pointermove', onMove, { passive: true })
     window.addEventListener('pointerup', release)
@@ -239,39 +300,53 @@ export default function HangingLamp() {
   }, [])
 
   const onDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const head = event.currentTarget
+    // Tangkap pointer: drag tetap jalan walau jari keluar dari kap lampu.
+    try {
+      head.setPointerCapture(event.pointerId)
+    } catch {
+      /* pointer capture tidak tersedia — pointermove global tetap dipakai. */
+    }
+    // Ukur ulang sekali di awal drag supaya posisi presisi.
+    measure()
+    const { originLeft, originTop, zoom } = geo.current
+    // Selisih pusat lampu vs jari → tidak melompat saat ditekan.
+    grab.current = {
+      dx: posX.current - (event.clientX - originLeft) / zoom,
+      dy: posY.current - (event.clientY - originTop) / zoom,
+    }
     dragging.current = true
     velX.current = 0
     velY.current = 0
+    flow.current = { x: 0, y: 0 }
+    prev.current = { x: posX.current, y: posY.current }
     cancelAnimationFrame(raf.current)
     frameQueued.current = false
     lastTime.current = 0
     rigRef.current?.classList.remove('is-swinging')
     rigRef.current?.classList.add('is-dragging')
-    aimAt(event.clientX, event.clientY)
     commit()
     event.preventDefault()
   }
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    const step = event.shiftKey ? 0.16 : 0.07
+    const step = event.shiftKey ? 18 : 8
     if (event.key === 'Home') {
       cancelAnimationFrame(raf.current)
-      angleX.current = 0
-      angleY.current = 0
+      posX.current = geo.current.ax
+      posY.current = CORD
       velX.current = 0
       velY.current = 0
+      flow.current = { x: 0, y: 0 }
+      prev.current = { x: posX.current, y: posY.current }
       commit()
     } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
       cancelAnimationFrame(raf.current)
-      const dir = event.key === 'ArrowLeft' ? -1 : 1
-      const next = angleX.current + step * dir
-      angleX.current = next < -MAX_ANGLE ? -MAX_ANGLE : next > MAX_ANGLE ? MAX_ANGLE : next
+      posX.current = limitX(posX.current + (event.key === 'ArrowLeft' ? -step : step))
       commit()
     } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
       cancelAnimationFrame(raf.current)
-      const dir = event.key === 'ArrowUp' ? 1 : -1
-      const next = angleY.current + step * dir
-      angleY.current = next < -MAX_ANGLE ? -MAX_ANGLE : next > MAX_ANGLE ? MAX_ANGLE : next
+      posY.current = limitY(posY.current + (event.key === 'ArrowUp' ? -step : step))
       commit()
     } else {
       return
@@ -280,17 +355,19 @@ export default function HangingLamp() {
   }
 
   return (
-    <div
-      ref={rigRef}
-      className="lamp-rig"
-      onPointerDown={onDown}
-      onKeyDown={onKeyDown}
-      role="button"
-      tabIndex={0}
-      aria-label="Tarik lampu ke segala arah. Pakai tombol panah untuk menggerakkan."
-    >
-      <span className="lamp-cord" aria-hidden="true" />
-      <div className="lamp-head">
+    <div ref={rigRef} className="lamp-rig">
+      <svg ref={svgRef} className="lamp-cable" aria-hidden="true">
+        <path ref={cableRef} className="lamp-cable-path" />
+      </svg>
+      <div
+        ref={headRef}
+        className="lamp-head"
+        onPointerDown={onDown}
+        onKeyDown={onKeyDown}
+        role="button"
+        tabIndex={0}
+        aria-label="Tarik lampu ke segala arah. Pakai tombol panah untuk menggerakkan."
+      >
         <svg className="lamp-shade" viewBox="0 0 80 58" aria-hidden="true">
           <path d="M40 3 L40 14" className="lamp-wire" />
           <path d="M14 48 Q40 10 66 48 Z" className="lamp-body" />

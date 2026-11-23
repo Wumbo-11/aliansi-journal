@@ -564,7 +564,7 @@ textarea:focus-visible {
   appearance: none;
   -webkit-appearance: none;
   cursor: pointer;
-  touch-action: manipulation;
+  touch-action: none;
 }
 .opacity-bar input[type='range']::-webkit-slider-runnable-track {
   height: 2px;

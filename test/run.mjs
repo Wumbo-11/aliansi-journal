@@ -559,8 +559,13 @@ const lampSrc = readFileSync(new URL('../src/HangingLamp.tsx', import.meta.url),
 const dotSrc = readFileSync(new URL('../src/DotField.tsx', import.meta.url), 'utf8')
 check('perf lampu: ukuran diukur di measure(), bukan tiap frame',
   /const measure = \(\) => \{[\s\S]*?getBoundingClientRect/.test(lampSrc) &&
-  /const step = \(\) =>/.test(lampSrc) &&
-  !/const step = \(\) =>[\s\S]*?getBoundingClientRect/.test(lampSrc))
+  /const simulate = /.test(lampSrc) &&
+  !/const simulate = [\s\S]*?getBoundingClientRect/.test(lampSrc))
+check('perf lampu: physics FIXED-TIMESTEP (mulus di 60/90/120Hz)',
+  /const step = \(now: number\) =>/.test(lampSrc) &&
+  /accumulator\.current \+= dt/.test(lampSrc) &&
+  /while \(accumulator\.current >= 16\.667/.test(lampSrc) &&
+  /simulate\(goal\)/.test(lampSrc))
 check('perf lampu: pointermove pakai grab offset (anti-lompat)',
   /grab\.current = \{ x: c\.x - event\.clientX/.test(lampSrc) &&
   /target\.current = \{ x: event\.clientX \+ grab\.current\.x/.test(lampSrc) &&
@@ -586,7 +591,7 @@ check('perf lampu: hanya menulis gaya bila berubah',
 check('perf lampu: variabel tak terpakai (--lamp-x/-y) dibuang',
   !/--lamp-x/.test(lampSrc) && !/--lamp-y/.test(lampSrc))
 check('perf lampu: loop berhenti saat rantai diam (raf = 0)',
-  /else raf\.current = 0/.test(lampSrc) &&
+  /raf\.current = 0[\s\S]*?lastTime\.current = 0[\s\S]*?accumulator\.current = 0/.test(lampSrc) &&
   /if \(!raf\.current\)/.test(lampSrc))
 check('perf lampu: glow & judul dari lift ARAH (bukan jarak absolut)',
   /setProperty\('--lamp-glow'/.test(lampSrc) &&

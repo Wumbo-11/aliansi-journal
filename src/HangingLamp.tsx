@@ -52,6 +52,8 @@ export default function HangingLamp() {
   const capVel = useRef<XY>({ x: 0, y: 0 })
   const dragging = useRef(false)
   const raf = useRef(0)
+  const lastTime = useRef(0)
+  const accumulator = useRef(0)
   const target = useRef<XY | null>(null)
   const grab = useRef<XY>({ x: 0, y: 0 })
   const initialized = useRef(false)
@@ -216,9 +218,12 @@ export default function HangingLamp() {
     }
   }
 
-  const step = () => {
+  /**
+   * Fixed-timestep accumulator → gerakan IDENTIK di 60/90/120Hz (tidak patah²
+   * saat frame rate naik-turun). Tiap langkah = 1/60 detik.
+   */
+  const simulate = (goal: XY | null) => {
     const p = pts.current
-    const goal = clampedTarget()
 
     if (goal) {
       // Kap KINEMATIS: nempel target, TANPA easing/gravitasi/velocity.
@@ -258,7 +263,7 @@ export default function HangingLamp() {
       }
     }
 
-    // Cuma titik TENGAH kabel yang ragdoll (Verlet).
+    // Cuma titik TENGAH kabel yang ragdoll (Verlet) — 1 langkah tetap.
     for (let i = 1; i < SEGMENTS; i++) {
       const pt = p[i]
       const vx = (pt.x - pt.px) * DAMPING
@@ -268,8 +273,25 @@ export default function HangingLamp() {
       pt.y += vy + GRAVITY
     }
     constrain()
+  }
+
+  const step = (now: number) => {
+    const dt = lastTime.current ? Math.min(64, now - lastTime.current) : 16.667
+    lastTime.current = now
+    accumulator.current += dt
+    const goal = clampedTarget()
+    let guard = 0
+    // Jalankan beberapa langkah 16.667ms per frame sampai minus. Maks 4
+    // langkah/frame biar nggak freeze kalau tab lama di-background.
+    while (accumulator.current >= 16.667 && guard < 4) {
+      simulate(goal)
+      accumulator.current -= 16.667
+      guard++
+    }
+    if (guard === 4) accumulator.current = 0 // buang waktu tertinggal
     commit()
 
+    const p = pts.current
     const moving = p.some((pt) =>
       Math.abs(pt.x - pt.px) > REST_EPS || Math.abs(pt.y - pt.py) > REST_EPS)
     const settling = !dragging.current && !goal && (
@@ -278,11 +300,19 @@ export default function HangingLamp() {
       Math.abs(capPos.current.y - (anchor.current.y + CORD)) > REST_EPS
     )
     if (goal || moving || settling) raf.current = requestAnimationFrame(step)
-    else raf.current = 0
+    else {
+      raf.current = 0
+      lastTime.current = 0
+      accumulator.current = 0
+    }
   }
 
   const start = () => {
-    if (!raf.current) raf.current = requestAnimationFrame(step)
+    if (!raf.current) {
+      lastTime.current = 0
+      accumulator.current = 0
+      raf.current = requestAnimationFrame(step)
+    }
   }
 
   useLayoutEffect(() => {

@@ -1120,8 +1120,8 @@ export default function App() {
     const touch = event.changedTouches?.[0]
     if (!touch) return
     const target = event.target as HTMLElement | null
-    // Lampu punya gesture sendiri (digeser mengikuti kabel).
-    if (target?.closest('.lamp-overlay')) return
+    // Lampu punya gesture sendiri; slider opasitas jangan memicu swipe halaman.
+    if (target?.closest('.lamp-overlay') || target?.closest('.opacity-bar')) return
     const dx = touch.clientX - touchStart.current.x
     const dy = touch.clientY - touchStart.current.y
     // Swipe horizontal yang tegas tetap pindah halaman, meskipun dimulai

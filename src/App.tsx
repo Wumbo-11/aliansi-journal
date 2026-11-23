@@ -466,15 +466,7 @@ function useDraftAutosave(draft: Draft, key?: string) {
   }, [key])
 }
 
-function Composer({
-  onAdd,
-  panelOpacity,
-  setPanelOpacity,
-}: {
-  onAdd: (entry: Entry) => void
-  panelOpacity: number
-  setPanelOpacity: (value: number) => void
-}) {
+function Composer({ onAdd }: { onAdd: (entry: Entry) => void }) {
   const [saved] = useState(readDraft)
   const [title, setTitle] = useState(saved.title)
   const [author, setAuthor] = useState(saved.author)
@@ -580,21 +572,6 @@ function Composer({
           </button>
         </div>
 
-        <label className="panel-opacity">
-          <span className="panel-opacity-label">
-            <span>Opasitas kotak</span>
-            <span className="panel-opacity-value">{panelOpacity}%</span>
-          </span>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            step={1}
-            value={panelOpacity}
-            onChange={(event) => setPanelOpacity(Number(event.target.value))}
-            aria-label="Opasitas kotak pembungkus"
-          />
-        </label>
       </form>
     </section>
   )
@@ -1212,6 +1189,23 @@ export default function App() {
         </div>
       </header>
 
+      {showCompose && (
+        <div className="opacity-bar">
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={1}
+            value={panelOpacity}
+            onInput={(event) => setPanelOpacity(Number(event.currentTarget.value))}
+            onChange={(event) => setPanelOpacity(Number(event.currentTarget.value))}
+            aria-label="Opasitas kotak pembungkus"
+            title={`${panelOpacity}%`}
+          />
+          <span className="opacity-bar-value">{panelOpacity}%</span>
+        </div>
+      )}
+
       <main>
         {showWelcome && (
           <section className="hero page-view">
@@ -1238,13 +1232,7 @@ export default function App() {
           </div>
         )}
 
-        {showCompose && (
-          <Composer
-            onAdd={addEntry}
-            panelOpacity={panelOpacity}
-            setPanelOpacity={setPanelOpacity}
-          />
-        )}
+        {showCompose && <Composer onAdd={addEntry} />}
 
         {showArchive && (
           <Reveal>

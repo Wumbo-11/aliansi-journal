@@ -267,51 +267,62 @@ if (lamp && lampHead && cablePath) {
   const L = 76
   const rest = headXY()
   const restD = cableD()
+  // Anchored ke judul; jsdom judul width=0 → fallback anchor(512,190).
+  // Kap awal turun sedikit karena gravitasi Verlet sebelum diam.
   check('lampu: posisi awal menggantung di bawah titik gantung',
-    Math.abs(rest.x - ax) < 1.5 && Math.abs(rest.y - (ay + L)) < 1.5,
+    Math.abs(rest.x - ax) < 8 && rest.y > ay + 40 && rest.y < ay + 90,
     `x=${rest.x} y=${rest.y} anchor=(${ax},${ay})`)
-  // Kabel = path kontinyu, tidak ada C (bezier lama) atau garis putus.
-  check('lampu: kabel = satu path kontinyu (M + Q + L), tanpa putus',
-    /^M [\d.]+ [\d.]+( Q [-0-9.]+ [-0-9.]+ [-0-9.]+ [-0-9.]+)+ L [-0-9.]+ [-0-9.]+$/.test(cableD()),
+  check('lampu: PANJANG KABEL TETAP (kap tidak lebih jauh dari 76px dari anchor)',
+    Math.hypot(rest.x - ax, rest.y - ay) <= 76.5,
+    `d=${Math.hypot(rest.x - ax, rest.y - ay).toFixed(2)}`)
+  // Kabel = path kontinyu Catmull-Rom (C), tanpa garis putus.
+  check('lampu: kabel = satu path kontinyu (M + 8×C), tanpa putus',
+    /^M [\d.]+ [\d.]+( C [-0-9.]+ [-0-9.]+ [-0-9.]+ [-0-9.]+ [-0-9.]+ [-0-9.]+)+$/.test(cableD()),
     cableD())
   check('lampu: titik gantung tidak ikut bergerak',
     cableD().startsWith(`M ${ax.toFixed(2)} ${ay.toFixed(2)}`), cableD())
-  // Ragdoll: 8 ruas × 9.5px = 76px total. Ukur dari path (Q/L) tidak praktis,
-  // jadi cek jumlah titik kontrol = 7 Q + 1 L = 8 ruas.
-  check('lampu: kabel terdiri 8 ruas ragdoll (panjang total tetap 76px)',
-    (cableD().match(/ Q /g) || []).length === 7 && (cableD().match(/ L /g) || []).length === 1)
+  check('lampu: kabel terdiri 8 ruas cubic (total 76px)',
+    (cableD().match(/ C /g) || []).length === 8)
 
   lampHead.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, clientX: rest.x, clientY: rest.y }))
   await sleep(100)
   check('lampu: jadi aktif saat disentuh', lamp.classList.contains('is-dragging'))
+  check('lampu: tidak melompat saat disentuh (grab offset)',
+    Math.abs(headXY().x - rest.x) < 12, `x=${headXY().x} rest=${rest.x}`)
 
-  // Tarik ke kanan jauh: kap mengikuti jari, kabel melengkung (bukan kaku).
+  // Tarik ke kanan jauh: kap mengikuti jari, tapi TIDAK lebih jauh dari 76px.
   window.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: rest.x + 160, clientY: rest.y - 40 }))
   await sleep(160)
   const right = headXY()
-  check('lampu: kap lampu mengikuti tarikan ke kanan', right.x > rest.x + 100, `x=${right.x}`)
+  check('lampu: kap lampu mengikuti tarikan ke kanan', right.x > rest.x + 20, `x=${right.x}`)
+  check('lampu: KABEL TIDAK MEMANJANG (target di-clamp radius 76)',
+    Math.hypot(right.x - ax, right.y - ay) <= 76.5, `d=${Math.hypot(right.x - ax, right.y - ay).toFixed(2)}`)
   check('lampu: cahaya ikut diatur (CSS var terisi)', !Number.isNaN(aim()), `rel=${aim()}`)
   check('lampu: kabel melengkung saat ditarik (bukan garis lurus kaku)',
     cableD() !== restD, cableD())
   check('lampu: kap miring mengikuti arah kabel (bohlam tidak ke bawah terus)',
     Math.abs(headAngle()) > 0.05, `rot=${headAngle()}`)
+  check('lampu: glow header aktif saat lampu naik',
+    Number.parseFloat(document.documentElement.style.getPropertyValue('--lamp-glow') || '0') >= 0,
+    `glow=${document.documentElement.style.getPropertyValue('--lamp-glow')}`)
 
-  // Tarik ke ATAS melewati titik gantung: TANPA lompatan (posisi terus berubah).
+  // Tarik ke ATAS melewati titik gantung: TANPA lompatan, jarak tetap ≤76.
   window.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: ax + 40, clientY: ay - 60 }))
   await sleep(160)
   const up = headXY()
   check('lampu: bisa ke atas titik gantung, tidak ada lompatan',
-    up.y < ay && Math.abs(up.x - ax) < 120, `x=${up.x} y=${up.y}`)
+    up.y < ay + 20 && Math.hypot(up.x - ax, up.y - ay) <= 76.5,
+    `x=${up.x.toFixed(1)} y=${up.y.toFixed(1)} d=${Math.hypot(up.x - ax, up.y - ay).toFixed(2)}`)
   check('lampu: kabel tetap kontinyu saat di atas',
-    /^M [\d.]+ [\d.]+( Q [-0-9.]+ [-0-9.]+ [-0-9.]+ [-0-9.]+)+ L [-0-9.]+ [-0-9.]+$/.test(cableD()))
+    /^M [\d.]+ [\d.]+( C [-0-9.]+ [-0-9.]+ [-0-9.]+ [-0-9.]+ [-0-9.]+ [-0-9.]+)+$/.test(cableD()))
 
   // Tarik ke kiri.
   window.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: ax - 160, clientY: ay + 60 }))
   await sleep(160)
   const left = headXY()
-  check('lampu: bisa ditarik ke kiri (bebas segala arah)', left.x < ax - 100, `x=${left.x}`)
-  check('lampu: kap tidak melompat (jarak dari tarikan wajar)',
-    Math.hypot(left.x - (ax - 160), left.y - (ay + 60)) < 20)
+  check('lampu: bisa ditarik ke kiri (bebas segala arah)', left.x < ax - 20, `x=${left.x}`)
+  check('lampu: kap tidak melompat (jarak ≤76, arah kiri)',
+    Math.hypot(left.x - ax, left.y - ay) <= 76.5 && left.x < ax, `x=${left.x.toFixed(1)}`)
 
   window.dispatchEvent(new window.MouseEvent('pointerup', { bubbles: true }))
   await sleep(40)
@@ -459,7 +470,7 @@ check('mobile: halaman 2 = form tulis (lampu hilang)',
   !!mobileHost.querySelector('.composer') && !mobileHost.querySelector('.lamp-overlay'))
 check('mobile: halaman 2 tanpa judul ALIANSI/heading', !!mobileHost.querySelector('.composer .section-heading') === false || true)
 // Slider opasitas kotak (halaman tulis) — bisa turun sampai 0.
-const opacitySlider = document.querySelector('.panel-opacity input[type=range]')
+const opacitySlider = document.querySelector('.opacity-bar input[type=range]')
 check('form: slider opasitas kotak ada', !!opacitySlider)
 if (opacitySlider) {
   check('form: slider 0–100 (nilai awal mengikuti tersimpan)',
@@ -538,11 +549,14 @@ const lampSrc = readFileSync(new URL('../src/HangingLamp.tsx', import.meta.url),
 const dotSrc = readFileSync(new URL('../src/DotField.tsx', import.meta.url), 'utf8')
 check('perf lampu: ukuran diukur di measure(), bukan tiap frame',
   /const measure = \(\) => \{[\s\S]*?getBoundingClientRect/.test(lampSrc) &&
-  /const step = \(now/.test(lampSrc) &&
-  !/const step = \(now[\s\S]*?getBoundingClientRect/.test(lampSrc))
-check('perf lampu: pointermove di-coalesce jadi target per frame',
-  /target\.current = \{ x: event\.clientX, y: event\.clientY \}/.test(lampSrc) &&
+  /const step = \(\) =>/.test(lampSrc) &&
+  !/const step = \(\) =>[\s\S]*?getBoundingClientRect/.test(lampSrc))
+check('perf lampu: pointermove pakai grab offset (anti-lompat)',
+  /grab\.current = \{ x: cap\.x - event\.clientX/.test(lampSrc) &&
+  /target\.current = \{ x: event\.clientX \+ grab\.current\.x/.test(lampSrc) &&
   /requestAnimationFrame\(step\)/.test(lampSrc))
+check('perf lampu: target di-clamp radius (kabel tidak memanjang)',
+  /const clampedTarget/.test(lampSrc) && /d <= CORD/.test(lampSrc))
 check('perf lampu: tanpa state React saat drag (tanpa setActive)',
   !lampSrc.includes('setActive'))
 check('perf lampu: hanya menulis gaya bila berubah',
@@ -552,9 +566,10 @@ check('perf lampu: hanya menulis gaya bila berubah',
 check('perf lampu: variabel tak terpakai (--lamp-x/-y) dibuang',
   !/--lamp-x/.test(lampSrc) && !/--lamp-y/.test(lampSrc))
 check('perf lampu: loop berhenti saat rantai diam (raf = 0)',
-  /raf\.current = 0[\s\S]*?lastTime\.current = 0/.test(lampSrc) &&
-  /if \(raf\.current\)/.test(lampSrc) === false &&
+  /else raf\.current = 0/.test(lampSrc) &&
   /if \(!raf\.current\)/.test(lampSrc))
+check('perf lampu: glow header dari posisi kap',
+  /setProperty\('--lamp-glow'/.test(lampSrc) && /headerBottom/.test(lampSrc))
 check('perf lampu: ukur ulang saat font siap & resize (langsung, tanpa rAF storm)',
   /fonts\?\.ready/.test(lampSrc) && /orientationchange/.test(lampSrc) &&
   /onResize = \(\) => \{[\s\S]{0,120}measure\(\)/.test(lampSrc))

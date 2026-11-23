@@ -2,6 +2,7 @@
   color-scheme: dark;
   --bg: #0d0d0f;
   --panel-opacity: 1;
+  --lamp-glow: 0;
   --bg-glow: rgba(201, 168, 106, 0.055);
   --surface: #141416;
   --text: #f3efe7;
@@ -530,72 +531,55 @@ textarea:focus-visible {
     transform 0.3s ease;
 }
 
-/* ── Slider opasitas kotak (halaman tulis) ───────────── */
-.panel-opacity {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 22px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
-}
-
-.panel-opacity-label {
+/* ── Baris opasitas: sticky di bawah header, selalu bisa diklik ── */
+.opacity-bar {
+  position: relative;
+  z-index: 20; /* di atas overlay lampu (z-index 5) */
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
-  color: var(--muted);
-  font-size: 12px;
-  letter-spacing: 0.02em;
+  width: min(220px, 60vw);
+  margin: 2px 0 0 auto;
+  pointer-events: auto;
 }
 
-.panel-opacity-value {
-  font-variant-numeric: tabular-nums;
+.opacity-bar-value {
+  min-width: 34px;
   color: var(--accent);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
-.panel-opacity input[type='range'] {
-  width: 100%;
-  height: 20px;
+.opacity-bar input[type='range'] {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 18px;
   margin: 0;
-  appearance: none;
-  -webkit-appearance: none;
-  background: none;
+  accent-color: var(--accent);
   cursor: pointer;
   touch-action: manipulation;
 }
 
-.panel-opacity input[type='range']::-webkit-slider-runnable-track {
-  height: 2px;
-  border-radius: 2px;
-  background: var(--border-strong);
+/* ── Glow dari lampu ke header (variabel --lamp-glow dari JS) ──── */
+.topbar-brand,
+.drive-button,
+.header-actions .theme-button {
+  transition: color 0.18s ease, text-shadow 0.18s ease, filter 0.18s ease;
 }
 
-.panel-opacity input[type='range']::-webkit-slider-thumb {
-  appearance: none;
-  -webkit-appearance: none;
-  width: 16px;
-  height: 16px;
-  margin-top: -7px;
-  border: 0;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent);
+.topbar-brand,
+.drive-button {
+  color: color-mix(in srgb, var(--muted) calc((1 - var(--lamp-glow)) * 100%),
+    var(--accent) calc(var(--lamp-glow) * 100%));
+  text-shadow: 0 0 calc(var(--lamp-glow) * 14px)
+    color-mix(in srgb, var(--accent) calc(var(--lamp-glow) * 70%), transparent);
 }
 
-.panel-opacity input[type='range']::-moz-range-track {
-  height: 2px;
-  border-radius: 2px;
-  background: var(--border-strong);
-}
-
-.panel-opacity input[type='range']::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
-  border: 0;
-  border-radius: 50%;
-  background: var(--accent);
+.header-actions .theme-button {
+  filter: brightness(calc(1 + var(--lamp-glow) * 0.5))
+    drop-shadow(0 0 calc(var(--lamp-glow) * 8px)
+      color-mix(in srgb, var(--accent) calc(var(--lamp-glow) * 60%), transparent));
 }
 
 /* ── Composer ────────────────────────────────────────── */

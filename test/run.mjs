@@ -265,56 +265,65 @@ if (lamp && lampHead && cablePath) {
   const cableD = () => cablePath.getAttribute('d') || ''
 
   // jsdom: rect = 0 → lebar fallback = window.innerWidth (1024), anchor = 512.
+  const ax = window.innerWidth / 2
+  const R = 76
   const rest = headXY()
   check('lampu: posisi awal di tengah, menggantung di bawah titik gantung',
-    Math.abs(rest.x - window.innerWidth / 2) < 1 && rest.y === 76, `x=${rest.x} y=${rest.y}`)
+    Math.abs(rest.x - ax) < 1 && Math.abs(rest.y - R) < 1, `x=${rest.x} y=${rest.y}`)
+  // Jarak pusat kap ke titik gantung = R (panjang kabel).
+  const radius = (p) => Math.hypot(p.x - ax, p.y)
+  const headAngle = () => {
+    const m = /rotate\(([-0-9.]+)rad\)/.exec(lampHead.style.transform || '')
+    return m ? Number.parseFloat(m[1]) : 0
+  }
 
   lampHead.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, clientX: rest.x, clientY: 120 }))
   await sleep(40)
   check('lampu: jadi aktif saat disentuh', lamp.classList.contains('is-dragging'))
   check('lampu: tidak melompat saat disentuh (offset grab)',
-    Math.abs(headXY().x - rest.x) < 1, `x=${headXY().x}`)
+    Math.abs(radius(headXY()) - R) < 1, `r=${radius(headXY()).toFixed(2)}`)
 
-  // Geser KE KANAN: kap lampu harus ikut jari 1:1.
+  // Geser KE KANAN: kap lampu bergerak di busur lingkaran, jarak tetap R.
   window.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: rest.x + 120, clientY: 120 }))
   await sleep(60)
   const right = headXY()
-  check('lampu: kap lampu mengikuti jari 1:1 (bukan diputar)',
-    Math.abs(right.x - (rest.x + 120)) < 1.5, `x=${right.x}`)
+  check('lampu: kap lampu bergerak bebas ke kanan', right.x > rest.x + 20, `x=${right.x}`)
+  check('lampu: PANJANG KABEL TETAP (pusat kap selalu sejauh R dari gantung)',
+    Math.abs(radius(right) - R) < 0.6, `r=${radius(right).toFixed(3)}`)
   check('lampu: cahaya ikut diatur (CSS var terisi)', !Number.isNaN(aim()))
   const rightAim = aim()
   const rightD = cableD()
   check('lampu: geser kanan -> sorotan ke kanan', rightAim > 50, `rel=${rightAim}`)
-  check('lampu: kabel pakai cubic Bézier bertangen vertikal (bukan garis lurus)',
-    /^M [\d.]+ 0 C [-0-9.]+ [-0-9.]+ [-0-9.]+ [-0-9.]+ [-0-9.]+ [-0-9.]+$/.test(rightD), rightD)
+  check('lampu: kabel = SATU garis lurus kontinyu (M … L …), tidak putus',
+    /^M [\d.]+ 0 L [-0-9.]+ [-0-9.]+$/.test(rightD) && !rightD.includes('Q') && !rightD.includes('C'),
+    rightD)
   check('lampu: titik gantung tidak ikut bergerak',
-    rightD.startsWith(`M ${(window.innerWidth / 2).toFixed(2)} 0`), rightD)
-  check('lampu: kap lampu miring mengikuti arah kabel (bohlam tidak terkunci ke bawah)',
-    /rotate\(-0\.\d+rad\)/.test(lampHead.style.transform || ''), lampHead.style.transform)
-  // Titik kontrol pertama harus tepat di bawah titik gantung (tangen vertikal).
-  const ctrl = /^M ([\d.]+) 0 C ([\d.]+) [\d.]+/.exec(rightD)
-  check('lampu: kabel turun dulu dari langit-langit (tangen vertikal)',
-    !!ctrl && Math.abs(Number.parseFloat(ctrl[2]) - Number.parseFloat(ctrl[1])) < 0.5, rightD)
+    rightD.startsWith(`M ${ax.toFixed(2)} 0`), rightD)
+  check('lampu: kap lampu menunduk mengikuti arah kabel (bohlam tidak ke bawah terus)',
+    headAngle() < -0.1, `rot=${headAngle().toFixed(3)}`)
+  // Ujung kabel harus tepat di leher kap: jarak ujung ke pusat kap = NECK(26).
+  const cableEnd = () => {
+    const m = /L ([-0-9.]+) ([-0-9.]+)/.exec(cableD())
+    return m ? { x: Number.parseFloat(m[1]), y: Number.parseFloat(m[2]) } : { x: NaN, y: NaN }
+  }
+  check('lampu: kabel tersambung pas di leher kap (tidak ada yang putus)',
+    Math.abs(Math.hypot(right.x - cableEnd().x, right.y - cableEnd().y) - 26) < 0.6,
+    `d=${Math.hypot(right.x - cableEnd().x, right.y - cableEnd().y).toFixed(2)}`)
 
-  // Presisi 1 px: geser 3 px kanan 1 px bawah → kap lampu geser 3/1 px juga.
-  window.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: rest.x + 123, clientY: 121 }))
+  // Presisi: sudut jari = sudut lampu. Geser ke kanan atas → sudut berubah.
+  window.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: rest.x + 160, clientY: 20 }))
   await sleep(60)
-  const tiny = headXY()
-  check('lampu: presisi sub-derajat (3 px & 1 px ikut persis)',
-    Math.abs(tiny.x - (rest.x + 123)) < 0.6 && Math.abs(tiny.y - 77) < 0.6,
-    `x=${tiny.x} y=${tiny.y}`)
+  const angled = headXY()
+  check('lampu: presisi sudut (1° jari = 1° lampu, tetap di busur R)',
+    Math.abs(radius(angled) - R) < 0.6 && angled.x > right.x && angled.y < right.y,
+    `r=${radius(angled).toFixed(2)} x=${angled.x} y=${angled.y}`)
 
-  // Tarik jauh ke bawah: harus berhenti SEBELUM judul, bukan ke dasar web.
+  // Tarik jauh ke bawah: tetap di busur R, tidak menyentuh judul.
   window.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: rest.x, clientY: 400 }))
   await sleep(60)
   const down = headXY()
-  check('lampu: berhenti sebelum judul (tidak sampai dasar halaman)',
-    down.y > 90 && down.y <= 116.01, `y=${down.y}`)
-  // Ditarik lebih jauh lagi: posisi tidak ikut molor (bukan rubber band).
-  window.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: rest.x, clientY: 700 }))
-  await sleep(60)
-  check('lampu: batas keras, bukan karet (tidak ikut molor lagi)',
-    Math.abs(headXY().y - down.y) < 0.01, `y=${headXY().y}`)
+  check('lampu: ditarik ke bawah tetap di busur R (tidak ke dasar web)',
+    Math.abs(radius(down) - R) < 0.6 && Math.abs(down.y - R) < 1, `y=${down.y}`)
 
   // Geser KE KIRI.
   window.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: rest.x - 120, clientY: 120 }))
@@ -322,15 +331,16 @@ if (lamp && lampHead && cablePath) {
   const left = headXY()
   const leftAim = aim()
   check('lampu: geser kiri -> kap lampu & sorotan ke kiri',
-    Math.abs(left.x - (rest.x - 120)) < 1.5 && leftAim < rightAim, `x=${left.x} rel=${leftAim}`)
-  check('lampu: kabel ikut berubah saat kap lampu digeser', cableD() !== rightD)
+    left.x < rest.x - 20 && leftAim < rightAim, `x=${left.x} rel=${leftAim}`)
+  check('lampu: kabel ikut berubah & jarak tetap R',
+    cableD() !== rightD && Math.abs(radius(left) - R) < 0.6)
 
-  // Tarik ke ATAS: harus bergerak di sumbu Y juga (bebas segala arah).
-  window.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: rest.x, clientY: 60 }))
+  // Tarik ke ATAS: sudut melewati 90° (bisa naik di atas titik gantung).
+  window.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: rest.x + 30, clientY: -120 }))
   await sleep(60)
   const up = headXY()
-  check('lampu: bisa ditarik ke atas (sumbu Y bebas)',
-    up.y < down.y - 10 && up.y >= 36, `y=${up.y}`)
+  check('lampu: bisa ditarik ke atas (bebas segala arah, jarak tetap R)',
+    up.y < 0 && Math.abs(radius(up) - R) < 0.6, `y=${up.y.toFixed(2)} r=${radius(up).toFixed(2)}`)
 
   // jsdom tidak memuat CSS hasil bundling Vite, jadi baca sumber CSS langsung.
   const cssSource = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
@@ -356,9 +366,10 @@ if (lamp && lampHead && cablePath) {
   ) {
     await sleep(80)
   }
-  check('lampu: kembali tegak & menggantung diam setelah dilepas',
-    !/rotate/.test(lampHead.style.transform || '') &&
-    Math.abs(headXY().y - 76) < 1.5, lampHead.style.transform)
+  check('lampu: setelah diam rotasi jadi 0 (tegak) & posisi istirahat',
+    Math.abs(headAngle()) < 0.02 &&
+    Math.abs(headXY().x - ax) < 1 && Math.abs(headXY().y - R) < 1.5,
+    lampHead.style.transform)
 }
 
 check('footer: teks dibuang & wordmark pakai animasi pop',
@@ -487,6 +498,28 @@ await sleep(120)
 check('mobile: halaman 2 = form tulis (lampu hilang)',
   !!mobileHost.querySelector('.composer') && !mobileHost.querySelector('.lamp-rig'))
 check('mobile: halaman 2 tanpa judul ALIANSI/heading', !!mobileHost.querySelector('.composer .section-heading') === false || true)
+// Slider opasitas kotak (halaman tulis) — bisa turun sampai 0.
+const opacitySlider = document.querySelector('.panel-opacity input[type=range]')
+check('form: slider opasitas kotak ada', !!opacitySlider)
+if (opacitySlider) {
+  check('form: slider 0–100 (nilai awal mengikuti tersimpan)',
+    opacitySlider.getAttribute('min') === '0' &&
+    opacitySlider.getAttribute('max') === '100' &&
+    Number(opacitySlider.value) >= 0 && Number(opacitySlider.value) <= 100,
+    `val=${opacitySlider.value}`)
+  setValue(opacitySlider, '0')
+  await sleep(60)
+  check('form: opasitas 0 → CSS var & localStorage 0',
+    document.documentElement.style.getPropertyValue('--panel-opacity') === '0' &&
+    localStorage.getItem('aliansi-panel-opacity') === '0',
+    `var=${document.documentElement.style.getPropertyValue('--panel-opacity')} min=${opacitySlider.min} max=${opacitySlider.max} val=${opacitySlider.value}`)
+  setValue(opacitySlider, '100')
+  await sleep(60)
+  check('form: opasitas kembali 100',
+    document.documentElement.style.getPropertyValue('--panel-opacity') === '1' &&
+    localStorage.getItem('aliansi-panel-opacity') === '100',
+    `var=${document.documentElement.style.getPropertyValue('--panel-opacity')} ls=${localStorage.getItem('aliansi-panel-opacity')} val=${opacitySlider.value}`)
+}
 // Swipe horizontal yang dimulai dari DALAM kotak form harus tetap pindah halaman.
 const formBox = mobileHost.querySelector('.composer .field') || mobileHost.querySelector('.composer')
 const swipe = (el, fromX, toX) => {

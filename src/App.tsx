@@ -25,6 +25,7 @@ import {
 } from './drive'
 
 const THEME_KEY = 'aliansi-theme'
+const PANEL_OPACITY_KEY = 'aliansi-panel-opacity'
 
 const HEADING_HINTS = [
   'Sebuah cerita, sebuah hari.',
@@ -465,7 +466,15 @@ function useDraftAutosave(draft: Draft, key?: string) {
   }, [key])
 }
 
-function Composer({ onAdd }: { onAdd: (entry: Entry) => void }) {
+function Composer({
+  onAdd,
+  panelOpacity,
+  setPanelOpacity,
+}: {
+  onAdd: (entry: Entry) => void
+  panelOpacity: number
+  setPanelOpacity: (value: number) => void
+}) {
   const [saved] = useState(readDraft)
   const [title, setTitle] = useState(saved.title)
   const [author, setAuthor] = useState(saved.author)
@@ -570,6 +579,22 @@ function Composer({ onAdd }: { onAdd: (entry: Entry) => void }) {
             <span aria-hidden="true">↗</span>
           </button>
         </div>
+
+        <label className="panel-opacity">
+          <span className="panel-opacity-label">
+            <span>Opasitas kotak</span>
+            <span className="panel-opacity-value">{panelOpacity}%</span>
+          </span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={1}
+            value={panelOpacity}
+            onChange={(event) => setPanelOpacity(Number(event.target.value))}
+            aria-label="Opasitas kotak pembungkus"
+          />
+        </label>
       </form>
     </section>
   )
@@ -840,6 +865,10 @@ export default function App() {
   const [page, setPage] = useState<'welcome' | 'compose' | 'archive'>('welcome')
   const [isMobile, setIsMobile] = useState(isCompactView)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [panelOpacity, setPanelOpacity] = useState(() => {
+    const stored = Number(localStorage.getItem(PANEL_OPACITY_KEY))
+    return Number.isFinite(stored) && stored >= 0 && stored <= 100 ? stored : 100
+  })
   const { mode: soundMode, cycle: cycleSound } = useAmbient()
   const { active: fullscreen, supported: fullscreenSupported, toggle: toggleFullscreen } = useFullscreen()
   const touchStart = useRef({ x: 0, y: 0 })
@@ -885,11 +914,13 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = theme
     localStorage.setItem(THEME_KEY, theme)
+    document.documentElement.style.setProperty('--panel-opacity', String(panelOpacity / 100))
+    localStorage.setItem(PANEL_OPACITY_KEY, String(panelOpacity))
     document.querySelector('meta[name="theme-color"]')?.setAttribute(
       'content',
       theme === 'dark' ? '#0d0d0f' : '#f6f3ed',
     )
-  }, [theme])
+  }, [theme, panelOpacity])
 
   useEffect(() => {
     const queryMobile = window.matchMedia('(max-width: 720px)')
@@ -1207,7 +1238,13 @@ export default function App() {
           </div>
         )}
 
-        {showCompose && <Composer onAdd={addEntry} />}
+        {showCompose && (
+          <Composer
+            onAdd={addEntry}
+            panelOpacity={panelOpacity}
+            setPanelOpacity={setPanelOpacity}
+          />
+        )}
 
         {showArchive && (
           <Reveal>

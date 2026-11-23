@@ -595,34 +595,6 @@ textarea:focus-visible {
   background: var(--accent);
 }
 
-/* ── Glow dari lampu ke header (--lamp-glow = lift arah, 0..1) ── */
-.topbar-brand,
-.drive-button,
-.header-actions .theme-button {
-  transition: color 0.18s ease, text-shadow 0.18s ease, filter 0.18s ease;
-}
-
-/* DRIVE + brand kiri ikut menyala hangat. */
-.topbar-brand,
-.drive-button {
-  color: color-mix(in srgb, var(--muted) calc((1 - var(--lamp-glow)) * 100%),
-    var(--accent) calc(var(--lamp-glow) * 100%));
-  text-shadow: 0 0 calc(var(--lamp-glow) * 16px)
-    color-mix(in srgb, var(--accent) calc(var(--lamp-glow) * 85%), transparent);
-}
-
-/* Semua 3 ikon kanan (sound, fullscreen, tema) ikut menyala jelas. */
-.header-actions .theme-button {
-  color: color-mix(in srgb, var(--accent) calc((1 - var(--lamp-glow)) * 100%),
-    #fff8e8 calc(var(--lamp-glow) * 100%));
-  filter: drop-shadow(0 0 calc(var(--lamp-glow) * 10px)
-    color-mix(in srgb, var(--accent) calc(var(--lamp-glow) * 90%), transparent));
-}
-.drive-button .status-dot {
-  box-shadow: 0 0 calc(var(--lamp-glow) * 10px)
-    color-mix(in srgb, var(--accent) calc(var(--lamp-glow) * 90%), transparent);
-}
-
 /* ── Composer ────────────────────────────────────────── */
 .composer {
   max-width: 900px;
@@ -1994,4 +1966,32 @@ html[data-fullscreen='true'] .hero-inner {
   html[data-fullscreen='true'] .topbar {
     padding: 6px 0 0;
   }
+}
+/* ── Glow dari lampu ke header (--lamp-glow = lift arah, 0..1) ──
+   Taruh PALING AKHIR supaya menang atas .drive-button / .theme-button
+   yang didefinisikan lebih awal. --lamp-glow ditulis JS tiap frame. ── */
+.topbar-brand,
+.drive-button,
+.header-actions .theme-button {
+  transition: color 0.18s ease, text-shadow 0.18s ease, filter 0.18s ease;
+}
+
+.topbar-brand,
+.drive-button {
+  color: color-mix(in srgb, var(--muted) calc((1 - var(--lamp-glow, 0)) * 100%),
+    var(--accent) calc(var(--lamp-glow, 0) * 100%)) !important;
+  text-shadow: 0 0 calc(var(--lamp-glow, 0) * 16px)
+    color-mix(in srgb, var(--accent) calc(var(--lamp-glow, 0) * 85%), transparent) !important;
+}
+
+.header-actions .theme-button {
+  color: color-mix(in srgb, var(--accent) calc((1 - var(--lamp-glow, 0)) * 100%),
+    #fff8e8 calc(var(--lamp-glow, 0) * 100%)) !important;
+  filter: drop-shadow(0 0 calc(var(--lamp-glow, 0) * 10px)
+    color-mix(in srgb, var(--accent) calc(var(--lamp-glow, 0) * 90%), transparent)) !important;
+}
+
+.drive-button .status-dot {
+  box-shadow: 0 0 calc(var(--lamp-glow, 0) * 10px)
+    color-mix(in srgb, var(--accent) calc(var(--lamp-glow, 0) * 90%), transparent) !important;
 }

@@ -17,9 +17,10 @@ import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerE
  */
 const SEGMENTS = 8
 const CORD = 76 // jangkauan maksimal kap dari titik gantung
-const CABLE = 80 // panjang kabel > CORD → selalu ada slack (lengkung)
-const SEG = CABLE / SEGMENTS
-const NECK = 18 // jarak pusat kap ke leher (tempat kabel menyambung)
+const NECK = 18 // leher kap (tempat kabel menyambung), menghadap anchor
+// Panjang kabel = jarak anchor→leher saat kap mentok. Pas ditarik mentok kabel
+// tegang lurus; pas kap didorong ke dalam, slack muncul → kabel nekuk menggantung.
+const SEG = (CORD - NECK) / SEGMENTS
 const ITER = 6
 const CORRECT = 0.8
 const GRAVITY = 0.34
@@ -54,8 +55,8 @@ export default function HangingLamp() {
   const target = useRef<XY | null>(null)
   const grab = useRef<XY>({ x: 0, y: 0 })
   const initialized = useRef(false)
-  const glowRef = useRef(NaN)
-  const litRef = useRef(NaN)
+  const glowRef = useRef(-1)
+  const litRef = useRef(-1)
   const last = useRef({ d: '', transform: '', rel: NaN })
 
   /** Arah kap = anchor → kap. Rotasi ini yang dipakai kap (deterministik). */
@@ -74,7 +75,6 @@ export default function HangingLamp() {
 
   const measure = () => {
     const hero = document.querySelector('.hero-inner') as HTMLElement | null
-    const title = document.querySelector('.title-mark') as HTMLElement | null
     const text = document.querySelector('.title-mark-text') as HTMLElement | null
     textRef.current = text
     const heroRect = hero?.getBoundingClientRect()
@@ -82,15 +82,18 @@ export default function HangingLamp() {
       ? Number.parseFloat(window.getComputedStyle(hero).zoom) || 1
       : 1
 
+    // Titik gantung: DIHITUNG DARI TEKS judul (bukan container + margin),
+    // dan jaraknya diukur dari BAWAH kap lampu supaya shade tidak menimpa huruf.
     let ax = heroRect && heroRect.width > 0
       ? (heroRect.left + heroRect.width / 2) / zoom
       : window.innerWidth / 2
     let ay = heroRect && heroRect.top > 0 ? heroRect.top / zoom + 10 : 190
-    if (title) {
-      const tr = title.getBoundingClientRect()
+    if (text) {
+      const tr = text.getBoundingClientRect()
       if (tr.width > 0) {
         ax = (tr.left + tr.width / 2) / zoom
-        ay = (tr.top - TITLE_GAP - CORD) / zoom
+        // kap center = tr.top - GAP - SHADE_H/2 ; anchor = center - CORD
+        ay = (tr.top - TITLE_GAP - 30 - CORD) / zoom
       }
     }
 

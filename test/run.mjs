@@ -313,6 +313,14 @@ if (lamp && lampHead && cablePath) {
   check('lampu: bisa ke atas titik gantung, tidak ada lompatan',
     up.y < ay + 20 && Math.hypot(up.x - ax, up.y - ay) <= 76.5,
     `x=${up.x.toFixed(1)} y=${up.y.toFixed(1)} d=${Math.hypot(up.x - ax, up.y - ay).toFixed(2)}`)
+  // PERILAKU NYATA: lampu naik → glow header > 0 DAN judul meredup (<1).
+  // Tes ini GAGAL kalau glowRef/litRef masih NaN (bug lama).
+  const glowVal = Number.parseFloat(document.documentElement.style.getPropertyValue('--lamp-glow') || '0')
+  const litVal = Number.parseFloat(document.documentElement.style.getPropertyValue('--title-lit') || '1')
+  check('lampu: TARIK ATAS → --lamp-glow > 0 (menu menyala)',
+    glowVal > 0.05, `glow=${glowVal}`)
+  check('lampu: TARIK ATAS → --title-lit < 1 (judul meredup)',
+    litVal < 0.95, `lit=${litVal}`)
   check('lampu: kabel tetap kontinyu saat di atas',
     /^M [\d.]+ [\d.]+( C [-0-9.]+ [-0-9.]+ [-0-9.]+ [-0-9.]+ [-0-9.]+ [-0-9.]+)+$/.test(cableD()))
 

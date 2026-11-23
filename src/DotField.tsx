@@ -245,6 +245,9 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
     }
 
     const onMouseMove = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null
+      if (document.documentElement.dataset.fullscreenTransition === 'true' ||
+          target?.closest?.('button, header, .topbar')) return
       pointer.x = event.clientX
       pointer.y = event.clientY
       pointer.active = true
@@ -254,7 +257,8 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
       // Tap pada tombol (suara/fullscreen/tema/Drive) bukan gesture dot field —
       // diabaikan supaya dot tidak ikut melengkung ke pojok header lalu balik.
       const target = event.target as HTMLElement | null
-      if (target?.closest?.('button, header, .topbar')) return
+      if (document.documentElement.dataset.fullscreenTransition === 'true' ||
+          target?.closest?.('button, header, .topbar')) return
       if (event.touches.length > 0) {
         pointer.x = event.touches[0].clientX
         pointer.y = event.touches[0].clientY

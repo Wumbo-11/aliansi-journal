@@ -829,17 +829,12 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
-    if (fullscreen) document.documentElement.dataset.fullscreen = 'true'
-    else delete document.documentElement.dataset.fullscreen
     localStorage.setItem(THEME_KEY, theme)
     document.querySelector('meta[name="theme-color"]')?.setAttribute(
       'content',
       theme === 'dark' ? '#0d0d0f' : '#f6f3ed',
     )
-    return () => {
-      delete document.documentElement.dataset.fullscreen
-    }
-  }, [theme, fullscreen])
+  }, [theme])
 
   useEffect(() => {
     const queryMobile = window.matchMedia('(max-width: 720px)')

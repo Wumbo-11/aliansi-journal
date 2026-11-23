@@ -3,12 +3,11 @@ import { useCallback, useEffect, useState } from 'react'
 /**
  * Fullscreen Web API: masuk/keluar lewat klik, sinkron dengan tombol Esc/back.
  *
- * Chrome Android mengubah tinggi viewport + posisi scroll saat address bar
- * muncul lagi. Akibatnya bagian atas tampak hitam dan dots terdorong keluar.
- * Karena itu:
- *  1. Suspend deteksi "desktop site" selama transisi (index.html).
- *  2. Paksa scroll ke 0 + resize setelah transisi selesai.
- *  3. Kunci tinggi dokumen 100% via CSS (failsafe @media pointer: coarse).
+ * Di Chrome Android address bar muncul lagi saat keluar fullscreen. Dulu ini
+ * memicu "resize storm" (visualViewport + double rAF + timer berulang) yang
+ * bikin stutter & dot berkedut. Sekarang: tandai transisi LEBIH AWAL (sebelum
+ * browser sempat melaporkan viewport lebar), ukur ulang tepat sekali, lalu
+ * lepas penanda setelah address bar stabil.
  */
 export function useFullscreen() {
   const [active, setActive] = useState(false)
@@ -17,54 +16,56 @@ export function useFullscreen() {
 
   const resync = useCallback(() => {
     if (window.scrollX || window.scrollY) window.scrollTo(0, 0)
-    // Beri tahu lampu & App supaya ukur ulang sekali setelah ukuran stabil.
     window.dispatchEvent(new window.Event('resize'))
   }, [])
 
   useEffect(() => {
-    let timers: number[] = []
-    const settle = () => {
-      for (const t of timers) window.clearTimeout(t)
-      requestAnimationFrame(() => {
+    let releaseTimer = 0
+    let frame = 0
+
+    const onFullscreenChange = () => {
+      const root = document.documentElement
+      const next = !!document.fullscreenElement
+      setActive(next)
+      if (next) root.dataset.fullscreen = 'true'
+      else delete root.dataset.fullscreen
+
+      // Satu frame cukup untuk layout selesai. Tidak ada interval, tidak ada
+      // visualViewport listener — sumber stutter & kedut sebelumnya.
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
         resync()
-        requestAnimationFrame(resync)
+        // Lepas penanda setelah animasi address bar selesai.
+        window.clearTimeout(releaseTimer)
+        releaseTimer = window.setTimeout(() => {
+          delete root.dataset.fullscreenTransition
+        }, 700)
       })
-      // Setelah animasi address bar selesai, lepas penanda transisi supaya
-      // deteksi desktop-site aktif lagi (dengan viewport yang sudah stabil).
-      timers = [400, 700].map((ms) => window.setTimeout(() => {
-        resync()
-        if (ms === 700) delete document.documentElement.dataset.fullscreenTransition
-      }, ms))
     }
 
-    const sync = () => {
-      setActive(!!document.fullscreenElement)
-      document.documentElement.dataset.fullscreenTransition = 'true'
-      settle()
-    }
-    const onViewport = () => {
-      if (document.documentElement.dataset.fullscreenTransition === 'true') settle()
-    }
-
-    document.addEventListener('fullscreenchange', sync)
-    document.addEventListener('webkitfullscreenchange', sync)
-    window.visualViewport?.addEventListener('resize', onViewport)
-    window.addEventListener('orientationchange', settle)
+    document.addEventListener('fullscreenchange', onFullscreenChange)
+    document.addEventListener('webkitfullscreenchange', onFullscreenChange)
     return () => {
-      for (const t of timers) window.clearTimeout(t)
-      document.removeEventListener('fullscreenchange', sync)
-      document.removeEventListener('webkitfullscreenchange', sync)
-      window.visualViewport?.removeEventListener('resize', onViewport)
-      window.removeEventListener('orientationchange', settle)
+      cancelAnimationFrame(frame)
+      window.clearTimeout(releaseTimer)
+      document.removeEventListener('fullscreenchange', onFullscreenChange)
+      document.removeEventListener('webkitfullscreenchange', onFullscreenChange)
       delete document.documentElement.dataset.fullscreenTransition
     }
   }, [resync])
 
+  // Pasang penanda SEBELUM requestFullscreen: Chrome sesaat melaporkan viewport
+  // lebar saat transisi, yang memicu zoom "desktop site" & black bar/domain ilang.
   const toggle = useCallback(() => {
+    document.documentElement.dataset.fullscreenTransition = 'true'
     if (document.fullscreenElement) {
-      void document.exitFullscreen?.().catch(() => {})
+      void document.exitFullscreen?.().catch(() => {
+        delete document.documentElement.dataset.fullscreenTransition
+      })
     } else {
-      void document.documentElement.requestFullscreen?.().catch(() => {})
+      void document.documentElement.requestFullscreen?.().catch(() => {
+        delete document.documentElement.dataset.fullscreenTransition
+      })
     }
   }, [])
 

@@ -37,7 +37,7 @@ const audioParam = () => ({
   value: 0,
   cancelScheduledValues() {},
   setValueAtTime() {},
-  linearRampToValueAtTime() {},
+  linearRampToValueAtTime(to) { this.value = to },
 })
 const connectable = () => ({ connect() {}, disconnect() {} })
 class FakeAudioContext {
@@ -446,15 +446,20 @@ narrow = false
 check('mobile: satu layar utuh (site height 100%, overflow hidden)',
   /@media \(max-width: 720px\)[\s\S]*?\.site \{[\s\S]*?height: 100%;[\s\S]*?overflow: hidden/.test(cssText))
 check('mobile: dokumen dikunci (html/body 100dvh, overflow hidden)',
-  /html,\s*body \{\s*height: 100dvh;\s*max-height: 100dvh;\s*overflow: hidden;/.test(cssText))
+  /html,\s*body \{\s*height: 100dvh;\s*max-height: 100dvh;\s*min-height: 0;\s*overflow: hidden;/.test(cssText))
 check('mobile: wrapper reveal transparan (tidak menambah tinggi)',
   /\.site > main > \.reveal \{\s*display: contents;/.test(cssText))
 check('mobile: form beri jeda antar sub (field 22px)', /\.field \{\s*margin-top: 22px;/.test(cssText))
-check('mobile: dots aman dari safe-area & beri jarak dari form',
-  /\.page-dots \{[\s\S]*?padding: 14px 0 max\(24px, calc\(env\(safe-area-inset-bottom\) \+ 8px\)\)/.test(cssText))
+check('mobile: dots aman dari safe-area & tidak terpotong',
+  /\.site \{[\s\S]*?padding-bottom: 56px/.test(cssText) &&
+  /\.page-dots \{[\s\S]*?position: absolute;[\s\S]*?height: 56px;[\s\S]*?env\(safe-area-inset-bottom\)/.test(cssText))
 check('mobile: lampu diberi jarak lega di atas judul (150px)', /\.hero-inner \{[\s\S]{0,120}padding-top: 150px/.test(cssText))
-check('mobile: dots jadi bagian layout (bukan floating)',
-  /\.page-dots \{\s*flex: 0 0 auto/.test(cssText))
+check('mobile: dots dikunci di bawah layar (selalu terlihat)',
+  /\.page-dots \{\s*position: absolute;/.test(cssText) &&
+  /bottom: 0;/.test(cssText))
+check('mobile: body min-height di-reset (anti dots crop saat address bar muncul)',
+  /@media \(pointer: coarse\) \{[\s\S]*?min-height: 0;[\s\S]*?max-height: 100dvh/.test(cssText) ||
+  /html,\s*body \{[\s\S]*?min-height: 0;[\s\S]*?max-height: 100dvh/.test(cssText))
 check('mobile: footer disembunyikan di HP', /\.footer \{\s*display: none/.test(cssText))
 check('lampu: pita cahaya UFO (lamp-halo) dimatikan', /\.lamp-halo \{\s*display: none/.test(cssText))
 check('lampu tema terang: kap lampu item & mati',
@@ -588,30 +593,36 @@ check('suara: sumber live SomaFM Dronezone (ambient 24/7)',
   ambientSrc.includes('ice1.somafm.com/dronezone-128-mp3'))
 check('suara: generatif pakai Web Audio (tanpa file)',
   ambientSrc.includes('createOscillator') && ambientSrc.includes('createBiquadFilter'))
-check('suara: jeda otomatis saat tab tersembunyi',
-  ambientSrc.includes('document.hidden') && ambientSrc.includes('suspend()'))
+check('suara: JANGAN suspend audio saat tab hidden/fullscreen (anti mati permanen)',
+  ambientSrc.includes('document.hidden') && ambientSrc.includes('audioRef.current.pause()') &&
+  !ambientSrc.includes('ctxRef.current?.suspend()'))
 check('suara: preferensi tersimpan', ambientSrc.includes("localStorage.setItem(STORAGE_KEY"))
 check('suara: nyala ulang pada interaksi pertama (tidak autoplay)',
-  ambientSrc.includes('pointerdown') && ambientSrc.includes('autoplay') &&
-  ambientSrc.includes('apply(saved)'))
+  ambientSrc.includes('pointerdown') && ambientSrc.includes('apply(saved)') &&
+  ambientSrc.includes('keydown'))
 check('suara: fade on/off sangat pendek (responsif)',
   /const ON_FADE = 0\.0\d/.test(ambientSrc) && /const OFF_FADE = 0\.1\d/.test(ambientSrc))
 check('suara: toggle pakai ref (tidak ketinggalan satu klik)',
   /const next: SoundMode = modeRef\.current === 'off' \? 'live' : 'off'/.test(ambientSrc) &&
   /modeRef\.current = next\s*\n\s*setMode\(next\)/.test(ambientSrc))
-check('suara: live pakai jembatan ambient instan + crossfade saat playing',
-  /fadeMaster\(AMBIENT_LEVEL, ON_FADE\)[\s\S]{0,600}?goLive\(\)/.test(ambientSrc) &&
+check('suara: live pakai jembatan ambient + fallback saat stream gagal/ready',
   /audio\.addEventListener\('playing'/.test(ambientSrc) &&
-  ambientSrc.includes("preload = 'auto'"))
-check('fullscreen: resync berlapis + ikut visualViewport',
-  /requestAnimationFrame\(resync\)/.test(fsSrc) &&
+  /audio\.addEventListener\('error'/.test(ambientSrc) &&
+  /audio\.readyState >= 3/.test(ambientSrc) &&
+  /!audio\.paused/.test(ambientSrc) &&
+  ambientSrc.includes('fadeMaster(AMBIENT_LEVEL, ON_FADE)'))
+check('fullscreen: flag transisi dipasang SEBELUM request (anti zoom/domain ilang)',
+  /const toggle = useCallback\(\(\) => \{[\s\S]*?dataset\.fullscreenTransition = 'true'[\s\S]*?requestFullscreen/.test(fsSrc))
+check('fullscreen: resync ringan (tanpa visualViewport storm)',
   /dispatchEvent\(new window\.Event\('resize'\)\)/.test(fsSrc) &&
-  /visualViewport/.test(fsSrc) && /window\.scrollTo\(0, 0\)/.test(fsSrc))
-check('fullscreen: paksa reflow & reset scroll saat keluar',
-  /requestAnimationFrame\(\(\) => \{\s*resync\(\)/.test(fsSrc))
+  /window\.scrollTo\(0, 0\)/.test(fsSrc) &&
+  !/addEventListener\('resize'/.test(fsSrc) && !fsSrc.includes('setInterval'))
+check('fullscreen: reflow 1 frame + lepas penanda transisi',
+  /frame = requestAnimationFrame\(\(\) => \{/.test(fsSrc) &&
+  /delete root\.dataset\.fullscreenTransition/.test(fsSrc))
 check('fullscreen: suspend deteksi desktop-site saat transisi (anti black bar)',
-  fsSrc.includes('dataset.fullscreenTransition = \'true\'') &&
-  /delete document\.documentElement\.dataset\.fullscreenTransition/.test(fsSrc))
+  fsSrc.includes("dataset.fullscreenTransition = 'true'") &&
+  /delete root\.dataset\.fullscreenTransition/.test(fsSrc))
 const htmlText2 = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
 check('fullscreen: index.html skip detect saat transisi',
   /dataset\.fullscreenTransition === 'true'\) return/.test(htmlText2))
@@ -620,9 +631,9 @@ check('subtitle: 16 kalimat berganti (typewriter maju-mundur)',
 check('subtitle: caret berkedip & tinggi dikunci (tidak loncat)',
   /\.typewriter-caret/.test(cssText) && /@keyframes caret-blink/.test(cssText) &&
   /\.hero-subtitle \{[\s\S]*?min-height: 3\.1em/.test(cssText))
-check('layout: desktop lebih lebar (1400px) & HP lebih lega (18px)',
+check('layout: desktop lebih lebar (1400px) & HP lebih lega (32px)',
   /width: min\(100% - 40px, 1400px\)/.test(cssText) &&
-  /width: min\(100% - 18px, 1400px\)/.test(cssText))
+  /width: min\(100% - 32px, 1400px\)/.test(cssText))
 check('fullscreen: header transparan & dots tetap ada',
   /html\[data-fullscreen='true'\] \.topbar/.test(cssText) &&
   /html\[data-fullscreen='true'\] \.site/.test(cssText))

@@ -1213,6 +1213,7 @@ textarea:focus-visible {
   body {
     height: 100dvh;
     max-height: 100dvh;
+    min-height: 0;
     overflow: hidden;
     overscroll-behavior: none;
   }
@@ -1226,13 +1227,16 @@ textarea:focus-visible {
   }
 
   .site {
-    width: min(100% - 18px, 1400px);
+    width: min(100% - 32px, 1400px);
     /* Satu layar utuh: header + halaman + dots, tanpa scroll. */
     height: 100%;
     max-height: 100%;
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    position: relative;
+    /* Ruang khusus dots di bawah — konten tidak boleh menimpa. */
+    padding-bottom: 56px;
   }
 
   .site > main {
@@ -1340,7 +1344,7 @@ textarea:focus-visible {
     width: 100%;
     max-width: none;
     margin: 0;
-    padding: 26px 22px 40px;
+    padding: 22px 20px 20px;
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
@@ -1452,9 +1456,14 @@ textarea:focus-visible {
   /* Dots jadi bagian layout, duduk lebih rendah — beri jarak dari kotak form
      tapi tetap di dalam layar supaya tidak ada scroll. */
   .page-dots {
-    flex: 0 0 auto;
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+    height: 56px;
     margin: 0;
-    padding: 14px 0 max(24px, calc(env(safe-area-inset-bottom) + 8px));
+    padding: 0 0 max(14px, env(safe-area-inset-bottom));
   }
 }
 
@@ -1579,7 +1588,7 @@ textarea:focus-visible {
    lalu zoom wadah itu supaya teks terbaca. Mode HP biasa TIDAK kena ini. ── */
 
 html[data-desktop-site="true"] .site {
-  width: min(100% - 18px, 1400px);
+  width: min(100% - 32px, 1400px);
 }
 
 html[data-desktop-site="true"] .topbar {
@@ -1710,9 +1719,6 @@ html[data-desktop-site='true'] .site {
   height: 100%;
   max-height: 100%;
 }
-html[data-desktop-site='true'] .page-dots {
-  padding: 20px 0 max(16px, env(safe-area-inset-bottom));
-}
 html[data-desktop-site='true'] .entry-grid {
   min-height: 0;
 }
@@ -1756,6 +1762,10 @@ html[data-fullscreen='true'] .site {
   body {
     height: 100dvh;
     max-height: 100dvh;
+    /* PENTING: reset min-height dari CSS dasar (100vh). Tanpa ini, min-height
+       menang atas max-height → body jadi 100vh → dots terpotong saat address
+       bar Chrome muncul di mode biasa. */
+    min-height: 0;
     overflow: hidden;
     overscroll-behavior: none;
   }
@@ -1770,6 +1780,8 @@ html[data-fullscreen='true'] .site {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    padding-bottom: 56px;
+    position: relative;
   }
 
   .site > main {
@@ -1794,7 +1806,13 @@ html[data-fullscreen='true'] .site {
   }
 
   .page-dots {
-    flex: 0 0 auto;
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+    height: 56px;
+    padding: 0 0 max(14px, env(safe-area-inset-bottom));
   }
 
   .footer {

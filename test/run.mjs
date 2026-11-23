@@ -259,7 +259,13 @@ if (lamp) {
       hero?.style.getPropertyValue('--lamp-rel') || 'NaN'),
   )
   const rotation = () => {
+    // Transform sekarang 2 sumbu: `perspective(...) rotateZ(ay) rotate(ax)`.
+    // ax = samping (yang diuji di sini), ay = naik/turun.
     const m = /rotate\(([-0-9.]+)rad\)/.exec(lamp.style.transform || '')
+    return m ? Number.parseFloat(m[1]) : 0
+  }
+  const lift = () => {
+    const m = /rotateZ\(([-0-9.]+)rad\)/.exec(lamp.style.transform || '')
     return m ? Number.parseFloat(m[1]) : 0
   }
 
@@ -284,6 +290,15 @@ if (lamp) {
   check('lampu: rotasi kiri = positif', rotation() > 0, `rot=${rotation().toFixed(3)}`)
   check('lampu: geseran dibatasi busur kabel',
     Math.abs(Math.sin(-rotation())) * 76 <= 76 * Math.sin(0.62) + 0.01)
+
+  // Dua sumbu: tarik ke ATAS harus mengubah rotasi Z (naik/turun), bukan
+  // hanya samping. jsdom: posisi istirahat dihitung dari rect 0 + CORD.
+  window.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: anchorX, clientY: -20 }))
+  await sleep(60)
+  check('lampu: tarik ke atas -> bergerak sumbu kedua (bebas segala arah)',
+    Math.abs(lift()) > 0.05, `lift=${lift().toFixed(3)}`)
+  check('lampu: transform pakai 3D (perspective + 2 rotasi)',
+    /perspective\(\d+px\) rotateZ\([^)]+\) rotate\([^)]+\)/.test(lamp.style.transform || ''))
 
   // jsdom tidak memuat CSS hasil bundling Vite, jadi baca sumber CSS langsung.
   const cssSource = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
@@ -464,6 +479,11 @@ check('mobile: body min-height di-reset (anti dots crop saat address bar muncul)
   /html,\s*body \{[\s\S]*?min-height: 0;[\s\S]*?max-height: 100dvh/.test(cssText))
 check('mobile: footer disembunyikan di HP', /\.footer \{\s*display: none/.test(cssText))
 check('lampu: pita cahaya UFO (lamp-halo) dimatikan', /\.lamp-halo \{\s*display: none/.test(cssText))
+check('judul: tanpa highlight biru saat tap (Android)',
+  /\.title-mark \{[\s\S]*?-webkit-tap-highlight-color: transparent/.test(cssText) &&
+  /\.title-mark \{[\s\S]*?user-select: none/.test(cssText) &&
+  /\.title-mark \{[\s\S]*?touch-action: manipulation/.test(cssText) &&
+  /^button \{[\s\S]*?-webkit-tap-highlight-color: transparent/m.test(cssText))
 check('lampu tema terang: kap lampu item & mati',
   /:root\[data-theme='light'\] \.lamp-body \{\s*fill: #1b1916;/.test(cssText) &&
   /:root\[data-theme='light'\] \.lamp-bulb \{[\s\S]*?filter: none;/.test(cssText))
@@ -474,16 +494,24 @@ check('lampu tema terang: teks Aliansi tanpa gradasi cahaya',
 const lampSrc = readFileSync(new URL('../src/HangingLamp.tsx', import.meta.url), 'utf8')
 const dotSrc = readFileSync(new URL('../src/DotField.tsx', import.meta.url), 'utf8')
 check('perf lampu: ukuran di-cache sekali (bukan reflow tiap frame)',
-  /const commit = \(\) => \{[\s\S]*?\n  \}/.test(lampSrc) &&
-  !/const commit = \(\) => \{[\s\S]*?getBoundingClientRect[\s\S]*?\n  \}/.test(lampSrc) &&
-  !/const commit = \(\) => \{[\s\S]*?getComputedStyle[\s\S]*?\n  \}/.test(lampSrc))
+  /const measure = \(\) => \{[\s\S]*?getBoundingClientRect/.test(lampSrc) &&
+  // commit() = painter murni: hanya baca nilai dari ref, tanpa mengukur DOM.
+  (() => {
+    const start = lampSrc.indexOf('const commit = () => {')
+    const end = lampSrc.indexOf('const queueFrame = () => {')
+    if (start < 0 || end < 0) return false
+    const body = lampSrc.slice(start, end)
+    return body.includes('style.transform = transform') &&
+      !body.includes('getBoundingClientRect') &&
+      !body.includes('getComputedStyle')
+  })())
 check('perf lampu: pointermove di-coalesce per frame',
-  /pending\.current = event\.clientX[\s\S]*?queueFrame\(\)/.test(lampSrc) &&
+  /pending\.current = \{ x: event\.clientX, y: event\.clientY \}[\s\S]*?queueFrame\(\)/.test(lampSrc) &&
   /if \(frameQueued\.current\) return/.test(lampSrc))
 check('perf lampu: tanpa state React saat drag (tanpa setActive)',
   !lampSrc.includes('setActive'))
 check('perf lampu: hanya menulis gaya bila berubah',
-  /if \(rot !== last\.current\.rot\)/.test(lampSrc) &&
+  /if \(transform !== last\.current\.rot\)/.test(lampSrc) &&
   /if \(rel !== last\.current\.rel\)/.test(lampSrc))
 check('perf lampu: variabel tak terpakai (--lamp-x/-y) dibuang',
   !/--lamp-x/.test(lampSrc) && !/--lamp-y/.test(lampSrc))

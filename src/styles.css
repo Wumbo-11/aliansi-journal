@@ -75,6 +75,9 @@ textarea {
 
 button {
   cursor: pointer;
+  /* Android: hilangkan kotak/garis biru saat tap. */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
 }
 
 button:focus-visible,
@@ -214,7 +217,10 @@ textarea:focus-visible {
   top: 0;
   width: 0;
   height: 0;
+  /* Titik gantung = transform-origin. Rotasi 2 sumbu memutar kabel & kap
+     lampu di sekitar titik ini → panjang kabel selalu tetap. */
   transform-origin: 0 0;
+  transform-style: preserve-3d;
   /* Hanya dinaikkan ke layer GPU saat digeser — biar tidak memakan memori
      grafis saat idle, tapi tetap mulus saat berayun. */
 }
@@ -243,6 +249,9 @@ textarea:focus-visible {
   transform: translate(-50%, -50%);
   cursor: grab;
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .lamp-rig.is-dragging .lamp-head,
@@ -341,9 +350,19 @@ textarea:focus-visible {
   font-weight: 500;
   letter-spacing: -0.04em;
   line-height: 1;
+  /* Tap/long-press tidak boleh memunculkan highlight seleksi biru bawaan
+     Chrome Android — judul ini tombol, bukan teks untuk dipilih. */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
 }
 
 .title-mark-text {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
   /* --lamp-rel = posisi lampu (0–100%) relatif lebar span ini,
      dihitung JS dari posisi bola lampu vs bounding box span.
    Ellipse dibuat jauh lebih besar dari glyph supaya transisi

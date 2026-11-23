@@ -5,6 +5,8 @@ type Dot = {
   ay: number
   sx: number
   sy: number
+  col: number
+  row: number
 }
 
 /**
@@ -73,15 +75,26 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
     }
 
     const build = () => {
-      width = window.innerWidth
-      height = window.innerHeight
-      // DPR tinggi di HP bikin canvas jauh lebih berat — batasi.
+      const nextWidth = window.innerWidth
+      const nextHeight = window.innerHeight
       const ratio = Math.min(window.devicePixelRatio || 1, touch ? 1.25 : 2)
-      canvas.width = Math.floor(width * ratio)
-      canvas.height = Math.floor(height * ratio)
-      canvas.style.width = `${width}px`
-      canvas.style.height = `${height}px`
-      ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
+      const pixelW = Math.floor(nextWidth * ratio)
+      const pixelH = Math.floor(nextHeight * ratio)
+      // Resize "palsu" dari fullscreen (resize event disipulkan tanpa ada
+      // perubahan ukuran) tidak boleh membangun ulang grid — ini sumber
+      // dot berkedut/loncat setiap kali tombol ditekan.
+      const sameSize = pixelW === canvas.width && pixelH === canvas.height
+      width = nextWidth
+      height = nextHeight
+      // Menulis canvas.width/height selalu mengosongkan kanvas — lakukan hanya
+      // kalau ukuran benar-benar berubah.
+      if (!sameSize) {
+        canvas.width = pixelW
+        canvas.height = pixelH
+        canvas.style.width = `${width}px`
+        canvas.style.height = `${height}px`
+        ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
+      }
 
       const step = dotRadius + spacing
       const cols = Math.floor(width / step)
@@ -89,15 +102,26 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
       const startX = (width % step) / 2 + step / 2
       const startY = (height % step) / 2 + step / 2
 
+      // Peta dot lama berdasarkan (col,row) supaya transisi ukuran nyata tetap
+      // halus — posisi yang sudah melengkung tidak di-reset ke tengah grid.
+      const previous = new Map<number, Dot>()
+      if (!sameSize) {
+        for (const dot of dots) previous.set(dot.row * 10000 + dot.col, dot)
+      }
+
       dots = []
       for (let row = 0; row < rows; row += 1) {
         for (let col = 0; col < cols; col += 1) {
           const x = startX + col * step
           const y = startY + row * step
-          dots.push({ ax: x, ay: y, sx: x, sy: y })
+          const old = previous.get(row * 10000 + col)
+          dots.push(old
+            ? { ax: x, ay: y, sx: old.sx + (x - old.ax), sy: old.sy + (y - old.ay), col, row }
+            : { ax: x, ay: y, sx: x, sy: y, col, row })
         }
       }
-      makeGradient()
+      if (!sameSize || !gradient) makeGradient()
+      return !sameSize
     }
 
     const trackSpeed = () => {
@@ -227,6 +251,10 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
       start()
     }
     const onTouch = (event: TouchEvent) => {
+      // Tap pada tombol (suara/fullscreen/tema/Drive) bukan gesture dot field —
+      // diabaikan supaya dot tidak ikut melengkung ke pojok header lalu balik.
+      const target = event.target as HTMLElement | null
+      if (target?.closest?.('button, header, .topbar')) return
       if (event.touches.length > 0) {
         pointer.x = event.touches[0].clientX
         pointer.y = event.touches[0].clientY
@@ -241,8 +269,11 @@ export default function DotField({ theme }: { theme: 'dark' | 'light' }) {
       start() // animasikan peluruhan glow walau loop sedang idle
     }
     const onResize = () => {
-      build()
+      const changed = build()
+      if (!changed) return
+      // canvas.width berubah = kanvas kosong; harus digambar ulang.
       if (reduced) draw()
+      else start()
     }
     const onVisibility = () => {
       if (document.hidden) {

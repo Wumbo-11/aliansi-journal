@@ -484,6 +484,15 @@ check('perf dot: tanpa atan2/sin/cos per titik (pakai dx/d)',
   !dotSrc.includes('Math.atan2') && !dotSrc.includes('Math.cos(angle)'))
 check('perf dot: ganti tema tanpa membongkar canvas',
   /rethemeRef\.current = \(\) => \{/.test(dotSrc) && /\}, \[\]\)/.test(dotSrc))
+check('dot: resize palsu tidak membangun ulang grid (anti-kedut fullscreen)',
+  /const sameSize = pixelW === canvas\.width && pixelH === canvas\.height/.test(dotSrc) &&
+  /if \(!sameSize\) \{\s*canvas\.width/.test(dotSrc) &&
+  /const changed = build\(\)[\s\S]*?if \(!changed\) return/.test(dotSrc))
+check('dot: tap tombol header diabaikan (anti-kedut suara/fullscreen)',
+  dotSrc.includes("closest?.('button, header, .topbar')"))
+check('dot: resize nyata memetakan ulang posisi (col,row) tanpa reset',
+  /previous\.set\(dot\.row \* 10000 \+ dot\.col, dot\)/.test(dotSrc) &&
+  /sx: old\.sx \+ \(x - old\.ax\)/.test(dotSrc))
 check('perf tema: transition background-image (tidak bisa dianimasikan) dibuang',
   !/transition: background-image/.test(cssText))
 check('perf app: resize di-rAF & state di-guard',

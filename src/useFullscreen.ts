@@ -16,6 +16,9 @@ export function useFullscreen() {
   const resync = useCallback(() => {
     // Seluruh dokumen memang tidak boleh scroll (layout satu layar).
     if (window.scrollX || window.scrollY) window.scrollTo(0, 0)
+    // Resize event dipakai App & lampu untuk ukur ulang. DotField sekarang
+    // mengabaikan resize "palsu" (ukuran sama) jadi ini aman — tapi tetap
+    // gua batasi: hanya disipulkan saat transisi, bukan interval abadi.
     window.dispatchEvent(new window.Event('resize'))
   }, [])
 
@@ -23,13 +26,13 @@ export function useFullscreen() {
     let timers: number[] = []
     const settle = () => {
       for (const t of timers) window.clearTimeout(t)
-      // Dua frame pertama menangani perubahan sinkron, timer menangkap
-      // animasi address bar yang masih berjalan sesudahnya.
+      // Cukup 2 frame + 1 timer setelah address bar selesai bergerak.
+      // (Dulu 6× resize — berlebihan & memicu micro-stutter dot.)
       requestAnimationFrame(() => {
         resync()
         requestAnimationFrame(resync)
       })
-      timers = [120, 320, 700, 1200].map((ms) => window.setTimeout(resync, ms))
+      timers = [350].map((ms) => window.setTimeout(resync, ms))
     }
 
     const sync = () => {

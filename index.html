@@ -22,6 +22,10 @@
       (function () {
         var root = document.documentElement
         function detect() {
+          // Selama transisi fullscreen jangan ubah status desktop-site —
+          // Chrome sesaat melaporkan viewport lebar saat address bar muncul
+          // lagi, yang memicu zoom & menyisakan black bar atas.
+          if (root.dataset.fullscreenTransition === 'true') return
           var pointerCoarse = window.matchMedia && (matchMedia('(any-pointer: coarse)').matches || matchMedia('(pointer: coarse)').matches)
           var touch = navigator.maxTouchPoints > 0 || 'ontouchstart' in window || pointerCoarse
           var layoutW = window.innerWidth

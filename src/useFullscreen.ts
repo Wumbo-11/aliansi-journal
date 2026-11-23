@@ -4,9 +4,11 @@ import { useCallback, useEffect, useState } from 'react'
  * Fullscreen Web API: masuk/keluar lewat klik, sinkron dengan tombol Esc/back.
  *
  * Chrome Android mengubah tinggi viewport + posisi scroll saat address bar
- * muncul lagi. Akibatnya bagian atas tampak kosong/hitam dan dots terdorong
- * keluar layar. Karena itu setiap perubahan disusul "paksa ukur ulang"
- * berlapis selama transisi selesai (100ms → ~1 detik).
+ * muncul lagi. Akibatnya bagian atas tampak hitam dan dots terdorong keluar.
+ * Karena itu:
+ *  1. Suspend deteksi "desktop site" selama transisi (index.html).
+ *  2. Paksa scroll ke 0 + resize setelah transisi selesai.
+ *  3. Kunci tinggi dokumen 100% via CSS (failsafe @media pointer: coarse).
  */
 export function useFullscreen() {
   const [active, setActive] = useState(false)
@@ -14,11 +16,8 @@ export function useFullscreen() {
     !!document.documentElement.requestFullscreen
 
   const resync = useCallback(() => {
-    // Seluruh dokumen memang tidak boleh scroll (layout satu layar).
     if (window.scrollX || window.scrollY) window.scrollTo(0, 0)
-    // Resize event dipakai App & lampu untuk ukur ulang. DotField sekarang
-    // mengabaikan resize "palsu" (ukuran sama) jadi ini aman — tapi tetap
-    // gua batasi: hanya disipulkan saat transisi, bukan interval abadi.
+    // Beri tahu lampu & App supaya ukur ulang sekali setelah ukuran stabil.
     window.dispatchEvent(new window.Event('resize'))
   }, [])
 
@@ -26,20 +25,26 @@ export function useFullscreen() {
     let timers: number[] = []
     const settle = () => {
       for (const t of timers) window.clearTimeout(t)
-      // Cukup 2 frame + 1 timer setelah address bar selesai bergerak.
-      // (Dulu 6× resize — berlebihan & memicu micro-stutter dot.)
       requestAnimationFrame(() => {
         resync()
         requestAnimationFrame(resync)
       })
-      timers = [350].map((ms) => window.setTimeout(resync, ms))
+      // Setelah animasi address bar selesai, lepas penanda transisi supaya
+      // deteksi desktop-site aktif lagi (dengan viewport yang sudah stabil).
+      timers = [400, 700].map((ms) => window.setTimeout(() => {
+        resync()
+        if (ms === 700) delete document.documentElement.dataset.fullscreenTransition
+      }, ms))
     }
 
     const sync = () => {
       setActive(!!document.fullscreenElement)
+      document.documentElement.dataset.fullscreenTransition = 'true'
       settle()
     }
-    const onViewport = () => settle()
+    const onViewport = () => {
+      if (document.documentElement.dataset.fullscreenTransition === 'true') settle()
+    }
 
     document.addEventListener('fullscreenchange', sync)
     document.addEventListener('webkitfullscreenchange', sync)
@@ -51,6 +56,7 @@ export function useFullscreen() {
       document.removeEventListener('webkitfullscreenchange', sync)
       window.visualViewport?.removeEventListener('resize', onViewport)
       window.removeEventListener('orientationchange', settle)
+      delete document.documentElement.dataset.fullscreenTransition
     }
   }, [resync])
 

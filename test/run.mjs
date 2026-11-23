@@ -319,6 +319,16 @@ const waitFor = async (fn, timeout = 5000) => {
 
 check('typewriter: mengetik sampai "Aliansi"', await waitFor(() => titleText() === 'Aliansi'), `teks="${titleText()}"`)
 
+// Subtitle halaman 1: typewriter maju-mundur, font/ukuran tetap.
+const subtitleText = () => document.querySelector('.hero-subtitle .typewriter-line')?.textContent ?? ''
+const subA = subtitleText()
+await sleep(600)
+const subB = subtitleText()
+check('subtitle: typewriter berjalan (teks berubah dari waktu ke waktu)',
+  subA !== subB && subB.length > 0, `"${subA}" -> "${subB}"`)
+check('subtitle: caret hadir & tinggi dikunci',
+  !!document.querySelector('.hero-subtitle .typewriter-caret'))
+
 document.querySelector('.title-mark').click()
 check('typewriter: klik -> mengetik jadi "A"', await waitFor(() => titleText() === 'A'), `teks="${titleText()}"`)
 document.querySelector('.title-mark').click()
@@ -440,8 +450,8 @@ check('mobile: dokumen dikunci (html/body 100dvh, overflow hidden)',
 check('mobile: wrapper reveal transparan (tidak menambah tinggi)',
   /\.site > main > \.reveal \{\s*display: contents;/.test(cssText))
 check('mobile: form beri jeda antar sub (field 22px)', /\.field \{\s*margin-top: 22px;/.test(cssText))
-check('mobile: dots turun & aman dari safe-area',
-  /\.page-dots \{[\s\S]*?padding: 26px 0 max\(18px, env\(safe-area-inset-bottom\)\)/.test(cssText))
+check('mobile: dots aman dari safe-area & beri jarak dari form',
+  /\.page-dots \{[\s\S]*?padding: 14px 0 max\(24px, calc\(env\(safe-area-inset-bottom\) \+ 8px\)\)/.test(cssText))
 check('mobile: lampu diberi jarak lega di atas judul (150px)', /\.hero-inner \{[\s\S]{0,120}padding-top: 150px/.test(cssText))
 check('mobile: dots jadi bagian layout (bukan floating)',
   /\.page-dots \{\s*flex: 0 0 auto/.test(cssText))
@@ -599,6 +609,17 @@ check('fullscreen: resync berlapis + ikut visualViewport',
   /visualViewport/.test(fsSrc) && /window\.scrollTo\(0, 0\)/.test(fsSrc))
 check('fullscreen: paksa reflow & reset scroll saat keluar',
   /requestAnimationFrame\(\(\) => \{\s*resync\(\)/.test(fsSrc))
+check('fullscreen: suspend deteksi desktop-site saat transisi (anti black bar)',
+  fsSrc.includes('dataset.fullscreenTransition = \'true\'') &&
+  /delete document\.documentElement\.dataset\.fullscreenTransition/.test(fsSrc))
+const htmlText2 = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
+check('fullscreen: index.html skip detect saat transisi',
+  /dataset\.fullscreenTransition === 'true'\) return/.test(htmlText2))
+check('subtitle: 16 kalimat berganti (typewriter maju-mundur)',
+  (readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8').match(/^  '[^']+',$/gm) || []).length >= 16)
+check('subtitle: caret berkedip & tinggi dikunci (tidak loncat)',
+  /\.typewriter-caret/.test(cssText) && /@keyframes caret-blink/.test(cssText) &&
+  /\.hero-subtitle \{[\s\S]*?min-height: 3\.1em/.test(cssText))
 check('layout: desktop lebih lebar (1400px) & HP lebih lega (18px)',
   /width: min\(100% - 40px, 1400px\)/.test(cssText) &&
   /width: min\(100% - 18px, 1400px\)/.test(cssText))

@@ -36,6 +36,26 @@ const HEADING_HINTS = [
   'Cerita kecil boleh jadi berarti.',
   'Kalimat pertama biasanya yang paling jujur.',
 ]
+
+// Kalimat pembuka halaman 1 — mengetik maju, hapus mundur, berganti selamanya.
+const HERO_LINES = [
+  'Tempat cerita disimpan, hari dibagikan, dan suara kecil tetap berarti.',
+  'Setiap hari punya sesuatu untuk diceritakan.',
+  'Tulis pelan, biar kata-katanya sempat bernapas.',
+  'Di sini, cerita kecil pun punya tempat.',
+  'Simpan hari ini supaya besok bisa kau kenang.',
+  'Kadang satu kalimat sudah cukup untuk pulang.',
+  'Ruang ini untuk kata yang tak sempat kau ucap.',
+  'Tidak perlu panjang, asal jujur.',
+  'Ceritamu adalah jejak langit yang tak terlihat.',
+  'Hari yang biasa pun layak ditulis.',
+  'Pelan-pelan, satu kalimat demi satu kalimat.',
+  'Ada keberanian dalam tulisan yang sederhana.',
+  'Biarkan suara kecil itu tetap terdengar di sini.',
+  'Yang kamu rasakan hari ini, boleh kau tinggalkan di sini.',
+  'Menulis adalah cara lain untuk tetap ingat.',
+  'Tiap coretan menyimpan versi dirimu yang berbeda.',
+]
 const dateFormat = new Intl.DateTimeFormat('id-ID', {
   day: 'numeric',
   month: 'long',
@@ -293,6 +313,74 @@ function RotatingHeading() {
   }, [index, reducedMotion])
 
   return <span className="rotating-heading-text">{shown || '\u00a0'}</span>
+}
+
+/**
+ * Subtitle halaman 1: mengetik maju → jeda → hapus mundur → kalimat berikutnya.
+ * Font & ukuran mengikuti .hero-subtitle (ditentukan CSS, tidak diubah JS).
+ */
+function TypewriterLine() {
+  const reducedMotion = useReducedMotion()
+  const [index, setIndex] = useState(0)
+  const [shown, setShown] = useState('')
+
+  useEffect(() => {
+    const full = HERO_LINES[index]
+    if (reducedMotion) {
+      setShown(full)
+      return
+    }
+
+    let current = ''
+    let deleting = false
+    let hold = 0
+    let timer = 0
+    let stopped = false
+
+    const tick = () => {
+      if (stopped) return
+      if (!deleting) {
+        current = full.slice(0, current.length + 1)
+        setShown(current)
+        if (current === full) deleting = true
+      } else if (hold < 32) {
+        hold += 1
+      } else {
+        current = current.slice(0, -1)
+        setShown(current)
+        if (!current) {
+          window.clearInterval(timer)
+          timer = 0
+          setIndex((value) => (value + 1) % HERO_LINES.length)
+        }
+      }
+    }
+    const run = () => {
+      if (timer) return
+      timer = window.setInterval(tick, 48)
+    }
+    const stop = () => {
+      if (!timer) return
+      window.clearInterval(timer)
+      timer = 0
+    }
+    const onVisibility = () => (document.hidden ? stop() : run())
+
+    run()
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      stopped = true
+      document.removeEventListener('visibilitychange', onVisibility)
+      stop()
+    }
+  }, [index, reducedMotion])
+
+  return (
+    <p className="hero-subtitle" aria-live="off">
+      <span className="typewriter-line">{shown || '\u00a0'}</span>
+      <span className="typewriter-caret" aria-hidden="true" />
+    </p>
+  )
 }
 
 /**
@@ -1051,9 +1139,7 @@ export default function App() {
               <span className="eyebrow">Aliansi · sejak hari ini</span>
               <TitleMark />
               <div className="ornament" aria-hidden="true"><span /></div>
-              <p className="hero-subtitle">
-                Tempat cerita disimpan, hari dibagikan, dan suara kecil tetap berarti.
-              </p>
+              <TypewriterLine />
               <button
                 type="button"
                 className="hero-link"

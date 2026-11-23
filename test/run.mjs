@@ -285,10 +285,29 @@ if (lamp && lampHead && cablePath) {
   const rightAim = aim()
   const rightD = cableD()
   check('lampu: geser kanan -> sorotan ke kanan', rightAim > 50, `rel=${rightAim}`)
-  check('lampu: kabel melengkung (quadratic Bézier), bukan garis lurus',
-    /^M [\d.]+ 0 Q [-0-9.]+ [-0-9.]+ [-0-9.]+ [-0-9.]+$/.test(rightD), rightD)
+  check('lampu: kabel pakai cubic Bézier bertangen vertikal (bukan garis lurus)',
+    /^M [\d.]+ 0 C [-0-9.]+ [-0-9.]+ [-0-9.]+ [-0-9.]+ [-0-9.]+ [-0-9.]+$/.test(rightD), rightD)
   check('lampu: titik gantung tidak ikut bergerak',
     rightD.startsWith(`M ${(window.innerWidth / 2).toFixed(2)} 0`), rightD)
+  // Titik kontrol pertama harus tepat di bawah titik gantung (tangen vertikal).
+  const ctrl = /^M ([\d.]+) 0 C ([\d.]+) [\d.]+/.exec(rightD)
+  check('lampu: kabel turun dulu dari langit-langit (tangen vertikal)',
+    !!ctrl && Math.abs(Number.parseFloat(ctrl[2]) - Number.parseFloat(ctrl[1])) < 0.5, rightD)
+
+  // Presisi 1 px: geser 3 px kanan 1 px bawah → kap lampu geser 3/1 px juga.
+  window.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: rest.x + 123, clientY: 121 }))
+  await sleep(60)
+  const tiny = headXY()
+  check('lampu: presisi sub-derajat (3 px & 1 px ikut persis)',
+    Math.abs(tiny.x - (rest.x + 123)) < 0.6 && Math.abs(tiny.y - 77) < 0.6,
+    `x=${tiny.x} y=${tiny.y}`)
+
+  // Tarik jauh ke bawah: harus ikut persis (tanpa pegas/batas karet).
+  window.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: rest.x, clientY: 400 }))
+  await sleep(60)
+  const down = headXY()
+  check('lampu: tarik ke bawah ikut persis (tanpa rubber band)',
+    Math.abs(down.y - (400 - 44)) < 0.6, `y=${down.y}`)
 
   // Geser KE KIRI.
   window.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: rest.x - 120, clientY: 120 }))
@@ -304,7 +323,7 @@ if (lamp && lampHead && cablePath) {
   await sleep(60)
   const up = headXY()
   check('lampu: bisa ditarik ke atas (sumbu Y bebas)',
-    up.y < right.y - 10 && up.y >= 20, `y=${up.y}`)
+    up.y < down.y - 10 && up.y >= 12, `y=${up.y}`)
 
   // jsdom tidak memuat CSS hasil bundling Vite, jadi baca sumber CSS langsung.
   const cssSource = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')

@@ -615,6 +615,12 @@ check('suara: live pakai jembatan ambient + fallback saat stream gagal/ready',
   ambientSrc.includes('fadeMaster(AMBIENT_LEVEL, ON_FADE)'))
 check('fullscreen: flag transisi dipasang SEBELUM request (anti zoom/domain ilang)',
   /const toggle = useCallback\(\(\) => \{[\s\S]*?dataset\.fullscreenTransition = 'true'[\s\S]*?requestFullscreen/.test(fsSrc))
+check('fullscreen: nudge scroll memulihkan address bar Chrome (anti black bar)',
+  /nudgeAddressBar/.test(fsSrc) &&
+  /body\.appendChild\(spacer\)/.test(fsSrc) &&
+  /window\.scrollTo\(0, 100\)/.test(fsSrc) &&
+  /window\.scrollTo\(0, 0\)/.test(fsSrc) &&
+  /if \(!next\) nudgeAddressBar\(\)/.test(fsSrc))
 check('fullscreen: resync ringan (tanpa visualViewport storm)',
   /dispatchEvent\(new window\.Event\('resize'\)\)/.test(fsSrc) &&
   /window\.scrollTo\(0, 0\)/.test(fsSrc) &&
@@ -633,6 +639,12 @@ check('subtitle: 16 kalimat berganti (typewriter maju-mundur)',
 check('subtitle: caret berkedip & tinggi dikunci (tidak loncat)',
   /\.typewriter-caret/.test(cssText) && /@keyframes caret-blink/.test(cssText) &&
   /\.hero-subtitle \{[\s\S]*?min-height: 3\.1em/.test(cssText))
+check('subtitle: phantom mengunci wrapping (anti patah saat ganti baris)',
+  /typewriter-ghost/.test(appSrc) && /visibility: hidden/.test(cssText) &&
+  /\.typewriter-live \{[\s\S]*?position: absolute;[\s\S]*?inset: 0/.test(cssText))
+check('subtitle: laju karakter dibatasi per-frame + carry (mulus)',
+  /carry \+= now - phaseStart/.test(appSrc) &&
+  /Math\.min\(2, Math\.floor\(carry/.test(appSrc))
 check('layout: desktop lebih lebar (1400px) & HP lebih lega (32px)',
   /width: min\(100% - 40px, 1400px\)/.test(cssText) &&
   /width: min\(100% - 32px, 1400px\)/.test(cssText))

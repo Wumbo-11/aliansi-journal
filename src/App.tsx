@@ -340,16 +340,17 @@ function TypewriterLine() {
       return
     }
 
-    const TYPE_MS = 42 // ms per karakter saat mengetik
-    const ERASE_MS = 22 // hapus sedikit lebih cepat → terasa hidup
-    const HOLD_MS = 1900 // diam setelah kalimat selesai
-    const NEXT_GAP_MS = 260 // jeda kosong sebelum kalimat baru
+    const TYPE_MS = 52 // ms per karakter saat mengetik
+    const ERASE_MS = 26 // hapus sedikit lebih cepat → terasa hidup
+    const HOLD_MS = 2000 // diam setelah kalimat selesai
+    const NEXT_GAP_MS = 300 // jeda kosong sebelum kalimat baru
 
     let shown = 0
     let phase: 'type' | 'hold' | 'erase' | 'gap' = 'type'
     let phaseStart = -1
     let raf = 0
     let stopped = false
+    let carry = 0 // sisa waktu antar-frame → laju konstan, tanpa loncatan
 
     const render = () => {
       // non-breaking space supaya tinggi baris tidak kolaps saat kosong.
@@ -364,31 +365,40 @@ function TypewriterLine() {
       if (phaseStart < 0) phaseStart = now
 
       if (phase === 'type') {
-        // Kecepatan berbasis waktu: kalau frame sempat drop, karakter yang
-        // tertinggal menyusul sekaligus — hasilnya tidak "patah".
-        const due = Math.floor((now - phaseStart) / TYPE_MS) + 1
-        if (due > shown) {
-          shown = Math.min(full.length, due)
+        // SATU karakter per frame + sisa waktu disimpan. Kalau frame drop,
+        // karakter tertinggal menyusul perlahan — tidak muncul sekaligus.
+        carry += now - phaseStart
+        phaseStart = now
+        if (carry >= TYPE_MS && shown < full.length) {
+          const advance = Math.min(2, Math.floor(carry / TYPE_MS))
+          shown = Math.min(full.length, shown + advance)
+          carry -= advance * TYPE_MS
           render()
         }
         if (shown >= full.length) {
           phase = 'hold'
           phaseStart = now
+          carry = 0
         }
       } else if (phase === 'hold') {
         if (now - phaseStart >= HOLD_MS) {
           phase = 'erase'
           phaseStart = now
+          carry = 0
         }
       } else if (phase === 'erase') {
-        const steps = Math.floor((now - phaseStart) / ERASE_MS)
-        if (steps > 0) {
-          shown = Math.max(0, shown - steps)
+        carry += now - phaseStart
+        phaseStart = now
+        if (carry >= ERASE_MS && shown > 0) {
+          const back = Math.min(2, Math.floor(carry / ERASE_MS))
+          shown = Math.max(0, shown - back)
+          carry -= back * ERASE_MS
           render()
         }
         if (shown <= 0) {
           phase = 'gap'
           phaseStart = now
+          carry = 0
         }
       } else if (now - phaseStart >= NEXT_GAP_MS) {
         // Ganti kalimat lewat state — ini satu kali render, bukan per huruf.
@@ -417,8 +427,13 @@ function TypewriterLine() {
 
   return (
     <p className="hero-subtitle" aria-live="off">
-      <span className="typewriter-line" ref={lineRef} />
-      <span className="typewriter-caret" aria-hidden="true" />
+      {/* Teks phantom mengunci wrapping & tinggi sejak awal. Tanpa ini, saat
+          kalimat mengetik melewati batas baris, teks loncat ke kiri → "patah". */}
+      <span className="typewriter-ghost" aria-hidden="true">{HERO_LINES[index]}</span>
+      <span className="typewriter-live">
+        <span className="typewriter-line" ref={lineRef} />
+        <span className="typewriter-caret" aria-hidden="true" />
+      </span>
     </p>
   )
 }

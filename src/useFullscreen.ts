@@ -1,18 +1,40 @@
 import { useCallback, useEffect, useState } from 'react'
 
 /**
- * Fullscreen Web API: masuk/keluar lewat klik, sinkron dengan tombol Esc/back.
+ * Fullscreen Web API + workaround address bar Chrome Android.
  *
- * Di Chrome Android address bar muncul lagi saat keluar fullscreen. Dulu ini
- * memicu "resize storm" (visualViewport + double rAF + timer berulang) yang
- * bikin stutter & dot berkedut. Sekarang: tandai transisi LEBIH AWAL (sebelum
- * browser sempat melaporkan viewport lebar), ukur ulang tepat sekali, lalu
- * lepas penanda setelah address bar stabil.
+ * Bug Chrome Android (terkenal): setelah exitFullscreen(), address bar sering
+ * tidak muncul lagi kalau halaman overflow:hidden — karena Chrome hanya
+ * menampilkan toolbar saat pengguna scroll ke atas. Solusinya: "nudge" —
+ * buat area scroll sementara, scroll turun lalu naik, lalu kembalikan.
  */
 export function useFullscreen() {
   const [active, setActive] = useState(false)
   const supported = typeof document !== 'undefined' &&
     !!document.documentElement.requestFullscreen
+
+  /** Pulihkan address bar Chrome setelah keluar fullscreen. */
+  const nudgeAddressBar = useCallback(() => {
+    if (!window.matchMedia('(pointer: coarse)').matches) return
+    const html = document.documentElement
+    const body = document.body
+    const spacer = document.createElement('div')
+    spacer.style.cssText = 'height:140px;width:1px;pointer-events:none;opacity:0;'
+    const prevHtml = html.style.overflow
+    const prevBody = body.style.overflow
+    body.appendChild(spacer)
+    html.style.overflow = 'auto'
+    body.style.overflow = 'visible'
+    window.scrollTo(0, 100)
+    requestAnimationFrame(() => {
+      window.scrollTo(0, 0)
+      requestAnimationFrame(() => {
+        spacer.remove()
+        html.style.overflow = prevHtml
+        body.style.overflow = prevBody
+      })
+    })
+  }, [])
 
   const resync = useCallback(() => {
     if (window.scrollX || window.scrollY) window.scrollTo(0, 0)
@@ -30,12 +52,11 @@ export function useFullscreen() {
       if (next) root.dataset.fullscreen = 'true'
       else delete root.dataset.fullscreen
 
-      // Satu frame cukup untuk layout selesai. Tidak ada interval, tidak ada
-      // visualViewport listener — sumber stutter & kedut sebelumnya.
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(() => {
         resync()
-        // Lepas penanda setelah animasi address bar selesai.
+        // Saat KELUAR fullscreen, paksa Chrome menampilkan address bar lagi.
+        if (!next) nudgeAddressBar()
         window.clearTimeout(releaseTimer)
         releaseTimer = window.setTimeout(() => {
           delete root.dataset.fullscreenTransition
@@ -52,10 +73,8 @@ export function useFullscreen() {
       document.removeEventListener('webkitfullscreenchange', onFullscreenChange)
       delete document.documentElement.dataset.fullscreenTransition
     }
-  }, [resync])
+  }, [resync, nudgeAddressBar])
 
-  // Pasang penanda SEBELUM requestFullscreen: Chrome sesaat melaporkan viewport
-  // lebar saat transisi, yang memicu zoom "desktop site" & black bar/domain ilang.
   const toggle = useCallback(() => {
     document.documentElement.dataset.fullscreenTransition = 'true'
     if (document.fullscreenElement) {

@@ -318,66 +318,106 @@ function RotatingHeading() {
 /**
  * Subtitle halaman 1: mengetik maju → jeda → hapus mundur → kalimat berikutnya.
  * Font & ukuran mengikuti .hero-subtitle (ditentukan CSS, tidak diubah JS).
+ *
+ * Mulus tanpa patah:
+ *  - Satu requestAnimationFrame loop (bukan setInterval 48ms) → sinkron
+ *    dengan refresh rate layar.
+ *  - Teks ditulis langsung ke DOM lewat ref, BUKAN setState. Dulu setiap
+ *    karakter memicu render React ulang → 20 render/detik → tersendat.
  */
 function TypewriterLine() {
   const reducedMotion = useReducedMotion()
   const [index, setIndex] = useState(0)
-  const [shown, setShown] = useState('')
+  const lineRef = useRef<HTMLSpanElement>(null)
 
   useEffect(() => {
     const full = HERO_LINES[index]
+    const node = lineRef.current
+    if (!node) return
+
     if (reducedMotion) {
-      setShown(full)
+      node.textContent = full
       return
     }
 
-    let current = ''
-    let deleting = false
-    let hold = 0
-    let timer = 0
+    const TYPE_MS = 42 // ms per karakter saat mengetik
+    const ERASE_MS = 22 // hapus sedikit lebih cepat → terasa hidup
+    const HOLD_MS = 1900 // diam setelah kalimat selesai
+    const NEXT_GAP_MS = 260 // jeda kosong sebelum kalimat baru
+
+    let shown = 0
+    let phase: 'type' | 'hold' | 'erase' | 'gap' = 'type'
+    let phaseStart = -1
+    let raf = 0
     let stopped = false
 
-    const tick = () => {
+    const render = () => {
+      // non-breaking space supaya tinggi baris tidak kolaps saat kosong.
+      node.textContent = shown > 0 ? full.slice(0, shown) : '\u00a0'
+    }
+    render()
+
+    const frame = (now: number) => {
       if (stopped) return
-      if (!deleting) {
-        current = full.slice(0, current.length + 1)
-        setShown(current)
-        if (current === full) deleting = true
-      } else if (hold < 32) {
-        hold += 1
-      } else {
-        current = current.slice(0, -1)
-        setShown(current)
-        if (!current) {
-          window.clearInterval(timer)
-          timer = 0
-          setIndex((value) => (value + 1) % HERO_LINES.length)
+      // Timestamp rAF adalah satu-satunya sumber waktu — tidak dicampur dengan
+      // performance.now() supaya tetap benar di browser maupun test runner.
+      if (phaseStart < 0) phaseStart = now
+
+      if (phase === 'type') {
+        // Kecepatan berbasis waktu: kalau frame sempat drop, karakter yang
+        // tertinggal menyusul sekaligus — hasilnya tidak "patah".
+        const due = Math.floor((now - phaseStart) / TYPE_MS) + 1
+        if (due > shown) {
+          shown = Math.min(full.length, due)
+          render()
         }
+        if (shown >= full.length) {
+          phase = 'hold'
+          phaseStart = now
+        }
+      } else if (phase === 'hold') {
+        if (now - phaseStart >= HOLD_MS) {
+          phase = 'erase'
+          phaseStart = now
+        }
+      } else if (phase === 'erase') {
+        const steps = Math.floor((now - phaseStart) / ERASE_MS)
+        if (steps > 0) {
+          shown = Math.max(0, shown - steps)
+          render()
+        }
+        if (shown <= 0) {
+          phase = 'gap'
+          phaseStart = now
+        }
+      } else if (now - phaseStart >= NEXT_GAP_MS) {
+        // Ganti kalimat lewat state — ini satu kali render, bukan per huruf.
+        setIndex((value) => (value + 1) % HERO_LINES.length)
+        return
+      }
+      raf = requestAnimationFrame(frame)
+    }
+
+    raf = requestAnimationFrame(frame)
+    const onVisibility = () => {
+      cancelAnimationFrame(raf)
+      if (!document.hidden) {
+        // Lanjutkan dari fase yang sama; sisa waktu dianggap habis.
+        phaseStart = -1
+        raf = requestAnimationFrame(frame)
       }
     }
-    const run = () => {
-      if (timer) return
-      timer = window.setInterval(tick, 48)
-    }
-    const stop = () => {
-      if (!timer) return
-      window.clearInterval(timer)
-      timer = 0
-    }
-    const onVisibility = () => (document.hidden ? stop() : run())
-
-    run()
     document.addEventListener('visibilitychange', onVisibility)
     return () => {
       stopped = true
+      cancelAnimationFrame(raf)
       document.removeEventListener('visibilitychange', onVisibility)
-      stop()
     }
   }, [index, reducedMotion])
 
   return (
     <p className="hero-subtitle" aria-live="off">
-      <span className="typewriter-line">{shown || '\u00a0'}</span>
+      <span className="typewriter-line" ref={lineRef} />
       <span className="typewriter-caret" aria-hidden="true" />
     </p>
   )

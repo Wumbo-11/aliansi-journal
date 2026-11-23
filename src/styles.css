@@ -42,11 +42,17 @@
 
 html {
   scroll-behavior: smooth;
+  /* Warnai juga area di luar body — mencegah garis/bar gelap bawaan browser
+     saat address bar Chrome bergerak (vh ≠ dvh). */
+  background-color: var(--bg);
 }
 
 body {
   margin: 0;
-  min-height: 100vh;
+  /* Jangan pakai min-height 100vh: saat address bar Chrome muncul, 100vh
+     lebih tinggi dari area terlihat → body menonjol & menyisakan area gelap
+     (black bar) di atas. 100dvh selalu = area yang benar-benar terlihat. */
+  min-height: 100dvh;
   background-color: var(--bg);
   background-image: radial-gradient(ellipse 75% 42% at 50% -12%, var(--bg-glow), transparent 72%);
   color: var(--text);
@@ -1236,7 +1242,7 @@ textarea:focus-visible {
     overflow: hidden;
     position: relative;
     /* Ruang khusus dots di bawah — konten tidak boleh menimpa. */
-    padding-bottom: 56px;
+    padding-bottom: 72px;
   }
 
   .site > main {
@@ -1453,17 +1459,18 @@ textarea:focus-visible {
     display: none;
   }
 
-  /* Dots jadi bagian layout, duduk lebih rendah — beri jarak dari kotak form
-     tapi tetap di dalam layar supaya tidak ada scroll. */
+  /* Dots duduk di bawah, turun & punya napas dari garis kotak form.
+     Tinggi 72px = ruang aman; isi dot rata tengah-bawah. */
   .page-dots {
     position: absolute;
     left: 0;
     right: 0;
     bottom: 0;
     z-index: 5;
-    height: 56px;
+    height: 72px;
     margin: 0;
-    padding: 0 0 max(14px, env(safe-area-inset-bottom));
+    padding: 18px 0 max(20px, calc(env(safe-area-inset-bottom) + 6px));
+    align-items: flex-end;
   }
 }
 
@@ -1780,7 +1787,7 @@ html[data-fullscreen='true'] .site {
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    padding-bottom: 56px;
+    padding-bottom: 72px;
     position: relative;
   }
 
@@ -1811,8 +1818,9 @@ html[data-fullscreen='true'] .site {
     right: 0;
     bottom: 0;
     z-index: 5;
-    height: 56px;
-    padding: 0 0 max(14px, env(safe-area-inset-bottom));
+    height: 72px;
+    padding: 18px 0 max(20px, calc(env(safe-area-inset-bottom) + 6px));
+    align-items: flex-end;
   }
 
   .footer {

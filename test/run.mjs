@@ -451,8 +451,10 @@ check('mobile: wrapper reveal transparan (tidak menambah tinggi)',
   /\.site > main > \.reveal \{\s*display: contents;/.test(cssText))
 check('mobile: form beri jeda antar sub (field 22px)', /\.field \{\s*margin-top: 22px;/.test(cssText))
 check('mobile: dots aman dari safe-area & tidak terpotong',
-  /\.site \{[\s\S]*?padding-bottom: 56px/.test(cssText) &&
-  /\.page-dots \{[\s\S]*?position: absolute;[\s\S]*?height: 56px;[\s\S]*?env\(safe-area-inset-bottom\)/.test(cssText))
+  /\.site \{[\s\S]*?padding-bottom: 72px/.test(cssText) &&
+  /\.page-dots \{[\s\S]*?position: absolute;[\s\S]*?height: 72px;[\s\S]*?env\(safe-area-inset-bottom\)/.test(cssText))
+check('mobile: dots turun & punya napas dari garis form (align-items flex-end)',
+  /\.page-dots \{[\s\S]*?align-items: flex-end;/.test(cssText))
 check('mobile: lampu diberi jarak lega di atas judul (150px)', /\.hero-inner \{[\s\S]{0,120}padding-top: 150px/.test(cssText))
 check('mobile: dots dikunci di bawah layar (selalu terlihat)',
   /\.page-dots \{\s*position: absolute;/.test(cssText) &&
